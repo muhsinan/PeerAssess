@@ -46,8 +46,8 @@ src/
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/peer-assessment-tool.git
-   cd peer-assessment-tool
+   git clone https://github.com/muhsinan/PeerAssess
+   cd PeerAssess
    ```
 
 2. Install dependencies:
