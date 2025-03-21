@@ -2,8 +2,6 @@
 
 PeerAssess is a modern web application designed to facilitate and enhance peer assessment in educational settings. By combining user-friendly interfaces with AI assistance, it creates a comprehensive platform for students to submit assignments and review their peers' work.
 
-![PeerAssess Screenshot](https://via.placeholder.com/800x400?text=PeerAssess+Screenshot)
-
 ## Features
 
 - **Assignment Submission**: Rich text editor with formatting options and file attachments
