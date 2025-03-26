@@ -2,43 +2,87 @@
 
 import { Fragment, useState, useEffect } from 'react';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, XMarkIcon, UserCircleIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', current: false },
-  { name: 'Submit Assignment', href: '/submit-assignment', current: false },
-  { name: 'Peer Reviews', href: '/peer-reviews', current: false },
-  { name: 'My Submissions', href: '/my-submissions', current: false },
-];
+const navigation = {
+  common: [
+    { name: 'Dashboard', href: '/dashboard', current: false },
+  ],
+  student: [
+    { name: 'My Assignments', href: '/my-assignments', current: false },
+    { name: 'My Submissions', href: '/my-submissions', current: false },
+  ],
+  instructor: [
+    { name: 'Peer Reviews', href: '/peer-reviews', current: false },
+    { name: 'Rubrics', href: '/rubrics', current: false },
+  ]
+};
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
 }
 
 export default function Navbar() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // Mock authentication state
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState<string | null>(null);
   
   // Check localStorage for login state when component mounts
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
       const loginState = localStorage.getItem('isLoggedIn');
+      const name = localStorage.getItem('userName');
+      const role = localStorage.getItem('userRole');
+      
       if (loginState === 'true') {
         setIsLoggedIn(true);
+        setUserName(name || 'User');
+        setUserRole(role);
       }
     }
   }, []);
   
-  // Function to toggle login state for demonstration
-  const toggleLogin = () => {
-    const newState = !isLoggedIn;
-    setIsLoggedIn(newState);
+  // Function to handle sign out
+  const handleSignOut = () => {
+    // Clear cookies
+    document.cookie = 'isLoggedIn=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'userRole=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'userName=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'userId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     
-    // Update localStorage
+    // Clear localStorage
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('isLoggedIn', newState ? 'true' : 'false');
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userId');
     }
+    
+    // Update state
+    setIsLoggedIn(false);
+    setUserName('');
+    
+    // Redirect to home page
+    router.push('/');
+  };
+  
+  // Get the appropriate navigation items based on user role
+  const getNavItems = () => {
+    if (!isLoggedIn) return [];
+    
+    const items = [...navigation.common];
+    
+    if (userRole === 'instructor') {
+      items.push(...navigation.instructor);
+    } else if (userRole === 'student') {
+      items.push(...navigation.student);
+    }
+    
+    return items;
   };
   
   return (
@@ -66,7 +110,7 @@ export default function Navbar() {
             </div>
             <div className="hidden sm:ml-6 sm:block">
               <div className="flex space-x-4">
-                {navigation.map((item) => (
+                {getNavItems().map((item) => (
                   <Link
                     key={item.name}
                     href={item.href}
@@ -90,8 +134,8 @@ export default function Navbar() {
                   <Menu.Button className="relative flex rounded-full bg-indigo-900 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-800">
                     <span className="absolute -inset-1.5" />
                     <span className="sr-only">Open user menu</span>
-                    <div className="h-8 w-8 rounded-full flex items-center justify-center bg-indigo-600 text-white">
-                      US
+                    <div className="h-8 w-8 rounded-full flex items-center justify-center bg-indigo-600 text-white hover:bg-indigo-500 transition-colors">
+                      {userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                     </div>
                   </Menu.Button>
                 </div>
@@ -109,8 +153,9 @@ export default function Navbar() {
                       {({ active }) => (
                         <Link
                           href="/profile"
-                          className={classNames(active ? 'bg-gray-100' : '', 'block px-4 py-2 text-sm text-gray-700')}
+                          className={classNames(active ? 'bg-gray-100' : '', 'block px-4 py-2 text-sm text-gray-700 flex items-center')}
                         >
+                          <UserCircleIcon className="h-5 w-5 mr-2 text-gray-500" aria-hidden="true" />
                           Your Profile
                         </Link>
                       )}
@@ -119,21 +164,22 @@ export default function Navbar() {
                       {({ active }) => (
                         <Link
                           href="/settings"
-                          className={classNames(active ? 'bg-gray-100' : '', 'block px-4 py-2 text-sm text-gray-700')}
+                          className={classNames(active ? 'bg-gray-100' : '', 'block px-4 py-2 text-sm text-gray-700 flex items-center')}
                         >
+                          <Cog6ToothIcon className="h-5 w-5 mr-2 text-gray-500" aria-hidden="true" />
                           Settings
                         </Link>
                       )}
                     </Menu.Item>
                     <Menu.Item>
                       {({ active }) => (
-                        <a
-                          href="#"
-                          className={classNames(active ? 'bg-gray-100' : '', 'block px-4 py-2 text-sm text-gray-700')}
-                          onClick={toggleLogin}
+                        <button
+                          className={classNames(active ? 'bg-gray-100' : '', 'block w-full text-left px-4 py-2 text-sm text-gray-700 flex items-center')}
+                          onClick={handleSignOut}
                         >
+                          <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2 text-gray-500" aria-hidden="true" />
                           Sign out
-                        </a>
+                        </button>
                       )}
                     </Menu.Item>
                   </Menu.Items>
@@ -144,13 +190,6 @@ export default function Navbar() {
                 <Link 
                   href="/login" 
                   className="text-indigo-100 hover:bg-indigo-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium"
-                  onClick={(e) => {
-                    // For demo: Allow login by clicking the login button directly with Ctrl key
-                    if (e.ctrlKey) {
-                      e.preventDefault();
-                      toggleLogin();
-                    }
-                  }}
                 >
                   Login
                 </Link>
@@ -165,7 +204,7 @@ export default function Navbar() {
 
       <Disclosure.Panel className="sm:hidden">
         <div className="space-y-1 px-2 pb-3 pt-2">
-          {navigation.map((item) => (
+          {getNavItems().map((item) => (
             <Link
               key={item.name}
               href={item.href}
@@ -192,6 +231,31 @@ export default function Navbar() {
               >
                 Register
               </Link>
+            </>
+          )}
+          {isLoggedIn && (
+            <>
+              <Link
+                href="/profile"
+                className="text-indigo-200 hover:bg-indigo-700 hover:text-white block rounded-md px-3 py-2 text-base font-medium flex items-center"
+              >
+                <UserCircleIcon className="h-5 w-5 mr-2" aria-hidden="true" />
+                Your Profile
+              </Link>
+              <Link
+                href="/settings"
+                className="text-indigo-200 hover:bg-indigo-700 hover:text-white block rounded-md px-3 py-2 text-base font-medium flex items-center"
+              >
+                <Cog6ToothIcon className="h-5 w-5 mr-2" aria-hidden="true" />
+                Settings
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="text-indigo-200 hover:bg-indigo-700 hover:text-white block w-full text-left rounded-md px-3 py-2 text-base font-medium flex items-center"
+              >
+                <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" aria-hidden="true" />
+                Sign out
+              </button>
             </>
           )}
         </div>

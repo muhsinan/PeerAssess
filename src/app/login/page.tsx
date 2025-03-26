@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
 
 export default function Login() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -15,6 +16,23 @@ export default function Login() {
   });
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
+
+  useEffect(() => {
+    // Check if user was redirected from registration
+    const registered = searchParams.get('registered');
+    if (registered === 'true') {
+      setRegistrationSuccess(true);
+    }
+    
+    // Check if user was redirected after password reset
+    const reset = searchParams.get('reset');
+    if (reset === 'success') {
+      setPasswordResetSuccess(true);
+    }
+  }, [searchParams]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -25,6 +43,10 @@ export default function Login() {
     // Clear error when user types
     if (errors[name]) {
       setErrors({ ...errors, [name]: '' });
+    }
+    // Clear server error when user changes any field
+    if (serverError) {
+      setServerError(null);
     }
   };
 
@@ -54,17 +76,58 @@ export default function Login() {
     }
     
     setIsSubmitting(true);
+    setServerError(null);
+    setRegistrationSuccess(false);
     
-    // Set mock logged in state for UI demonstration
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('isLoggedIn', 'true');
-    }
-    
-    // Simulate API call for login
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      // Call our login API
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+      
+      // Set logged in state with cookies
+      document.cookie = `isLoggedIn=true; path=/; max-age=${
+        formData.rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24
+      }`; // 30 days if remember me, otherwise 1 day
+      document.cookie = `userRole=${data.user.role}; path=/; max-age=${
+        formData.rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24
+      }`;
+      document.cookie = `userName=${data.user.name}; path=/; max-age=${
+        formData.rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24
+      }`;
+      document.cookie = `userId=${data.user.id}; path=/; max-age=${
+        formData.rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24
+      }`;
+      
+      // Also store in localStorage for client-side access
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('userRole', data.user.role);
+        localStorage.setItem('userName', data.user.name);
+        localStorage.setItem('userId', data.user.id.toString());
+      }
+      
+      // Redirect to dashboard
       router.push('/dashboard');
-    }, 1500);
+    } catch (error) {
+      console.error('Login error:', error);
+      setServerError(error instanceof Error ? error.message : 'Login failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -85,6 +148,60 @@ export default function Login() {
             </p>
           </div>
           
+          {registrationSuccess && (
+            <div className="rounded-md bg-green-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-green-800">Registration Successful</h3>
+                  <div className="mt-2 text-sm text-green-700">
+                    <p>Your account has been created. You can now sign in.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {passwordResetSuccess && (
+            <div className="rounded-md bg-green-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-green-800">Password Reset Successful</h3>
+                  <div className="mt-2 text-sm text-green-700">
+                    <p>Your password has been reset successfully. You can now sign in with your new password.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {serverError && (
+            <div className="rounded-md bg-red-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">Login Error</h3>
+                  <div className="mt-2 text-sm text-red-700">
+                    <p>{serverError}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div className="mb-4">
@@ -99,7 +216,7 @@ export default function Login() {
                   required
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.email ? 'border-red-300' : 'border-gray-300'
-                  } placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
+                  } placeholder-gray-500 text-black focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
                   placeholder="example@university.edu"
                   value={formData.email}
                   onChange={handleChange}
@@ -119,7 +236,7 @@ export default function Login() {
                   required
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.password ? 'border-red-300' : 'border-gray-300'
-                  } placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
+                  } placeholder-gray-500 text-black focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
                   placeholder="Password"
                   value={formData.password}
                   onChange={handleChange}
@@ -144,9 +261,9 @@ export default function Login() {
               </div>
 
               <div className="text-sm">
-                <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">
+                <Link href="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
                   Forgot your password?
-                </a>
+                </Link>
               </div>
             </div>
 
@@ -172,47 +289,6 @@ export default function Login() {
               </button>
             </div>
           </form>
-          
-          {/* Demo login options */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-50 text-gray-500">Demo accounts</span>
-              </div>
-            </div>
-            
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => {
-                  setFormData({
-                    email: 'student@example.com',
-                    password: 'password123',
-                    rememberMe: false
-                  });
-                }}
-              >
-                Student Demo
-              </button>
-              <button
-                type="button"
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => {
-                  setFormData({
-                    email: 'instructor@example.com',
-                    password: 'password123',
-                    rememberMe: false
-                  });
-                }}
-              >
-                Instructor Demo
-              </button>
-            </div>
-          </div>
         </div>
       </div>
       

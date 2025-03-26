@@ -17,6 +17,7 @@ export default function Register() {
   });
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -24,6 +25,10 @@ export default function Register() {
     // Clear error when user types
     if (errors[name]) {
       setErrors({ ...errors, [name]: '' });
+    }
+    // Clear server error when user changes any field
+    if (serverError) {
+      setServerError(null);
     }
   };
 
@@ -63,17 +68,51 @@ export default function Register() {
     }
     
     setIsSubmitting(true);
+    setServerError(null);
     
-    // Set mock logged in state for UI demonstration
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('isLoggedIn', 'true');
-    }
-    
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      // Call our registration API
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+      
+      // Store user data using cookies which will be accessible to our middleware
+      document.cookie = `isLoggedIn=true; path=/; max-age=${60 * 60 * 24 * 7}`; // 1 week
+      document.cookie = `userRole=${formData.role}; path=/; max-age=${60 * 60 * 24 * 7}`;
+      document.cookie = `userName=${formData.name}; path=/; max-age=${60 * 60 * 24 * 7}`;
+      document.cookie = `userId=${data.user.id}; path=/; max-age=${60 * 60 * 24 * 7}`;
+      
+      // Also store in localStorage as a fallback for client-side access
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('userRole', formData.role);
+        localStorage.setItem('userName', formData.name);
+        localStorage.setItem('userId', data.user.id);
+      }
+      
+      // Redirect to dashboard
       router.push('/dashboard');
-    }, 1500);
+    } catch (error) {
+      console.error('Registration error:', error);
+      setServerError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -94,6 +133,24 @@ export default function Register() {
             </p>
           </div>
           
+          {serverError && (
+            <div className="rounded-md bg-red-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">Registration Error</h3>
+                  <div className="mt-2 text-sm text-red-700">
+                    <p>{serverError}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div className="mb-4">
@@ -108,7 +165,7 @@ export default function Register() {
                   required
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.name ? 'border-red-300' : 'border-gray-300'
-                  } placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
+                  } placeholder-gray-500 text-black focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
                   placeholder="John Doe"
                   value={formData.name}
                   onChange={handleChange}
@@ -128,7 +185,7 @@ export default function Register() {
                   required
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.email ? 'border-red-300' : 'border-gray-300'
-                  } placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
+                  } placeholder-gray-500 text-black focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
                   placeholder="example@university.edu"
                   value={formData.email}
                   onChange={handleChange}
@@ -148,7 +205,7 @@ export default function Register() {
                   required
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.password ? 'border-red-300' : 'border-gray-300'
-                  } placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
+                  } placeholder-gray-500 text-black focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
                   placeholder="Password"
                   value={formData.password}
                   onChange={handleChange}

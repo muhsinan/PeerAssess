@@ -43,56 +43,173 @@ export default function AIReviewAnalysis({
   const scorePercentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
 
   // Generate AI analysis and suggestions
-  const generateAnalysis = () => {
+  const generateAnalysis = async () => {
     setIsAnalyzing(true);
     
-    // Mock AI analysis generation - in a real app, this would call an AI API
-    setTimeout(() => {
-      // Generate suggestions for each criterion
-      const suggestions: {[key: number]: string[]} = {};
-      
-      criteria.forEach(criterion => {
+    try {
+      // Prepare data for Ollama API
+      const criteriaData = criteria.map(criterion => {
         const criterionScore = scores[criterion.id] || 0;
         const scorePercentage = (criterionScore / criterion.maxPoints) * 100;
         const criterionFeedback = feedback[criterion.id] || '';
         
-        // Generate different suggestions based on score and existing feedback
-        if (scorePercentage < 50) {
-          suggestions[criterion.id] = [
-            `Your feedback could be more constructive by suggesting specific ways to improve in ${criterion.name.toLowerCase()}.`,
-            `Consider providing examples of resources that could help the student improve in this area.`,
-            `Be more specific about what elements were missing in the ${criterion.name.toLowerCase()} that led to this score.`
-          ];
-        } else if (scorePercentage < 80) {
-          suggestions[criterion.id] = [
-            `Balance your critique with acknowledgment of what the student did well in ${criterion.name.toLowerCase()}.`,
-            `Your feedback could be more detailed about which specific aspects need improvement.`,
-            `Consider suggesting how the student could take their work to the next level in this area.`
-          ];
-        } else {
-          suggestions[criterion.id] = [
-            `For high-scoring work, it's helpful to explain why their approach to ${criterion.name.toLowerCase()} was particularly effective.`,
-            `Consider suggesting how the student could apply their strengths in this area to other assignments.`,
-            `Even for excellent work, consider one area where they could further excel or challenge themselves.`
-          ];
-        }
+        return {
+          name: criterion.name,
+          description: criterion.description,
+          maxPoints: criterion.maxPoints,
+          score: criterionScore,
+          feedback: criterionFeedback
+        };
       });
       
-      // Generate overall analysis
-      let overallSuggestion = '';
-      if (scorePercentage < 50) {
-        overallSuggestion = `Your overall feedback is quite brief and primarily focuses on weaknesses. Consider balancing this with recognition of any strengths in the work, and providing more specific actionable advice for improvement. Remember that effective feedback should guide the student toward better performance in future assignments.`;
-      } else if (scorePercentage < 80) {
-        overallSuggestion = `Your feedback is thorough but could benefit from more specific examples or resources to help the student improve. Consider structuring your feedback to clearly separate strengths from areas needing improvement, and provide concrete next steps for the student to focus on.`;
-      } else {
-        overallSuggestion = `Your feedback for this high-scoring submission appropriately recognizes the strengths of the work. Consider adding suggestions for how the student might challenge themselves further or apply these skills in different contexts. This helps even strong students continue to develop.`;
+      // Generate prompt for overall feedback
+      const overallPrompt = `
+        You are an AI assistant helping a student improve their peer review feedback.
+        
+        Assignment: ${assignment.title}
+        Assignment Description: ${assignment.content}
+        
+        Overall feedback provided: "${overallFeedback}"
+        
+        Total score: ${totalScore}/${maxPossibleScore} (${scorePercentage.toFixed(2)}%)
+        
+        Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced.
+      `;
+      
+      // Call Ollama API for overall feedback
+      const overallResponse = await fetch('http://95.8.132.203:11434/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: "mistral",
+          prompt: overallPrompt
+        }),
+      });
+      
+      // Handle the response as a stream of JSON objects
+      const overallText = await overallResponse.text();
+      let overallSuggestion = "";
+      
+      try {
+        // Parse the response as a series of JSON objects
+        const responseLines = overallText.split('\n').filter(line => line.trim() !== '');
+        
+        // Concatenate all response parts
+        for (const line of responseLines) {
+          try {
+            const parsedData = JSON.parse(line);
+            if (parsedData.response !== undefined) {
+              overallSuggestion += parsedData.response;
+            }
+          } catch (e) {
+            // Skip invalid JSON lines
+            console.warn('Skipping invalid JSON line:', line);
+          }
+        }
+        
+        if (!overallSuggestion) {
+          overallSuggestion = "No suggestion available";
+        }
+      } catch (err) {
+        console.error('Error parsing overall feedback response:', err);
+        overallSuggestion = "Error parsing AI response. Please try again.";
+      }
+      
+      // Generate criteria-specific suggestions
+      const suggestions: {[key: number]: string[]} = {};
+      
+      // Process each criterion sequentially
+      for (const criterion of criteria) {
+        const criterionScore = scores[criterion.id] || 0;
+        const scorePercentage = (criterionScore / criterion.maxPoints) * 100;
+        const criterionFeedback = feedback[criterion.id] || '';
+        
+        const criterionPrompt = `
+          You are an AI assistant helping a student improve their peer review feedback.
+          
+          Criterion: ${criterion.name}
+          Description: ${criterion.description}
+          Max Points: ${criterion.maxPoints}
+          Score Given: ${criterionScore} (${scorePercentage.toFixed(2)}%)
+          Feedback Provided: "${criterionFeedback}"
+          
+          Please provide 3 specific suggestions to improve the feedback for this criterion. Each suggestion should be concise and actionable.
+        `;
+        
+        const criterionResponse = await fetch('http://95.8.132.203:11434/api/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: "mistral",
+            prompt: criterionPrompt
+          }),
+        });
+        
+        // Handle response as a stream of JSON objects
+        const criterionText = await criterionResponse.text();
+        let criterionSuggestions = "";
+        
+        try {
+          // Parse the response as a series of JSON objects
+          const responseLines = criterionText.split('\n').filter(line => line.trim() !== '');
+          
+          // Concatenate all response parts
+          for (const line of responseLines) {
+            try {
+              const parsedData = JSON.parse(line);
+              if (parsedData.response !== undefined) {
+                criterionSuggestions += parsedData.response;
+              }
+            } catch (e) {
+              // Skip invalid JSON lines
+              console.warn('Skipping invalid JSON line:', line);
+            }
+          }
+          
+          if (!criterionSuggestions) {
+            criterionSuggestions = "No suggestions available";
+          }
+        } catch (err) {
+          console.error('Error parsing criterion feedback response:', err);
+          criterionSuggestions = "Error parsing AI response. Please try again.";
+        }
+        
+        // Split the response into individual suggestions
+        const suggestionList = criterionSuggestions
+          .split(/\d\.|\n-|\n\*/)
+          .filter(Boolean)
+          .map((suggestion: string) => suggestion.trim())
+          .filter((suggestion: string) => suggestion.length > 0)
+          .slice(0, 3);
+        
+        suggestions[criterion.id] = suggestionList.length > 0 ? suggestionList : [criterionSuggestions];
       }
       
       setAiSuggestions(suggestions);
       setAiOverallSuggestion(overallSuggestion);
+    } catch (error) {
+      console.error('Error generating AI feedback:', error);
+      // Fallback to mock data if API call fails
+      const suggestions: {[key: number]: string[]} = {};
+      
+      criteria.forEach(criterion => {
+        suggestions[criterion.id] = [
+          `Unable to connect to AI service. Please check your network connection.`,
+          `You can try again later or provide feedback manually.`,
+          `Consider checking specific aspects of ${criterion.name.toLowerCase()} when writing feedback.`
+        ];
+      });
+      
+      setAiSuggestions(suggestions);
+      setAiOverallSuggestion('Unable to connect to AI service. Please check your network connection and try again.');
+    } finally {
       setIsAnalyzing(false);
       setAnalysisGenerated(true);
-    }, 1500);
+    }
   };
 
   return (
@@ -138,6 +255,7 @@ export default function AIReviewAnalysis({
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex space-x-8">
                 <button
+                  type="button"
                   onClick={() => setActiveTab('overall')}
                   className={`${
                     activeTab === 'overall'
@@ -148,6 +266,7 @@ export default function AIReviewAnalysis({
                   Overall Analysis
                 </button>
                 <button
+                  type="button"
                   onClick={() => setActiveTab('criteria')}
                   className={`${
                     activeTab === 'criteria'
