@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 // Initialize PostgreSQL connection pool
 const pool = new Pool({
   user: process.env.DB_USER || 'muhsinan',
-  host: process.env.DB_HOST || '95.8.132.203',
+  host: process.env.DB_HOST || '35.246.244.112',
   database: process.env.DB_NAME || 'peerassessdb',
   password: process.env.DB_PASSWORD || '1516',
   port: parseInt(process.env.DB_PORT || '5432'),

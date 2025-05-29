@@ -317,7 +317,7 @@ export default function ViewSubmission() {
                   </div>
                   <div className="px-4 py-5 sm:p-6">
                     <div 
-                      className="prose max-w-none"
+                      className="prose max-w-none text-gray-900 prose-headings:text-gray-900 prose-p:text-gray-900 prose-li:text-gray-900 prose-strong:text-gray-900"
                       dangerouslySetInnerHTML={{ __html: submission.content }}
                     />
                   </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import OpenAI from 'openai';
 
 interface RubricCriterion {
   id: number;
@@ -18,7 +19,7 @@ interface AIReviewAnalysisProps {
     title: string;
     content: string;
   };
-  onAIFeedbackSelect: (feedbackText: string) => void;
+  onAIFeedbackSelect: (criterionId: number, feedbackText: string) => void;
   onAIOverallFeedbackSelect: (feedbackText: string) => void;
 }
 
@@ -42,12 +43,44 @@ export default function AIReviewAnalysis({
   const maxPossibleScore = criteria.reduce((sum, criterion) => sum + criterion.maxPoints, 0);
   const scorePercentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
 
+  // Function to extract text between quotes from AI suggestions
+  const extractQuotedText = (suggestion: string): string => {
+    console.log('Extracting from suggestion:', suggestion);
+    
+    // First, try to find text after "Revised Feedback Example:" pattern (case insensitive)
+    const exampleMatch = suggestion.match(/Revised\s+Feedback\s+Example:\s*[""]([^"""]*?)[""]/) || 
+                        suggestion.match(/Revised\s+Feedback\s+Example:\s*"([^"]*?)"/i);
+    if (exampleMatch && exampleMatch[1] && exampleMatch[1].trim()) {
+      console.log('Found example match:', exampleMatch[1].trim());
+      return exampleMatch[1].trim();
+    }
+    
+    // Fall back to looking for any text between quotes (more greedy)
+    const quoteMatch = suggestion.match(/[""]([^"""]+?)[""]/) || 
+                      suggestion.match(/"([^"]+?)"/) ||
+                      suggestion.match(/['']([^''']+?)['']/);
+    if (quoteMatch && quoteMatch[1] && quoteMatch[1].trim()) {
+      console.log('Found quote match:', quoteMatch[1].trim());
+      return quoteMatch[1].trim();
+    }
+    
+    console.log('No quotes found, returning original');
+    // If no quotes found, return the original suggestion
+    return suggestion.trim();
+  };
+
   // Generate AI analysis and suggestions
   const generateAnalysis = async () => {
     setIsAnalyzing(true);
     
     try {
-      // Prepare data for Ollama API
+      // Initialize OpenAI client
+      const openai = new OpenAI({
+        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || '',
+        dangerouslyAllowBrowser: true
+      });
+      
+      // Prepare data for OpenAI API
       const criteriaData = criteria.map(criterion => {
         const criterionScore = scores[criterion.id] || 0;
         const scorePercentage = (criterionScore / criterion.maxPoints) * 100;
@@ -73,49 +106,27 @@ export default function AIReviewAnalysis({
         
         Total score: ${totalScore}/${maxPossibleScore} (${scorePercentage.toFixed(2)}%)
         
-        Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced.
+        Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced. Keep your response concise and actionable.
       `;
       
-      // Call Ollama API for overall feedback
-      const overallResponse = await fetch('http://95.8.132.203:11434/api/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: "mistral",
-          prompt: overallPrompt
-        }),
+      // Call OpenAI API for overall feedback
+      const overallResponse = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that provides constructive feedback suggestions for peer reviews. Be specific, actionable, and encouraging."
+          },
+          {
+            role: "user",
+            content: overallPrompt
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.85
       });
       
-      // Handle the response as a stream of JSON objects
-      const overallText = await overallResponse.text();
-      let overallSuggestion = "";
-      
-      try {
-        // Parse the response as a series of JSON objects
-        const responseLines = overallText.split('\n').filter(line => line.trim() !== '');
-        
-        // Concatenate all response parts
-        for (const line of responseLines) {
-          try {
-            const parsedData = JSON.parse(line);
-            if (parsedData.response !== undefined) {
-              overallSuggestion += parsedData.response;
-            }
-          } catch (e) {
-            // Skip invalid JSON lines
-            console.warn('Skipping invalid JSON line:', line);
-          }
-        }
-        
-        if (!overallSuggestion) {
-          overallSuggestion = "No suggestion available";
-        }
-      } catch (err) {
-        console.error('Error parsing overall feedback response:', err);
-        overallSuggestion = "Error parsing AI response. Please try again.";
-      }
+      const overallSuggestion = overallResponse.choices[0]?.message?.content || "No suggestion available";
       
       // Generate criteria-specific suggestions
       const suggestions: {[key: number]: string[]} = {};
@@ -128,63 +139,55 @@ export default function AIReviewAnalysis({
         
         const criterionPrompt = `
           You are an AI assistant helping a student improve their peer review feedback.
-          
+          Assignment: ${assignment.title}
+          Assignment Description: ${assignment.content}
           Criterion: ${criterion.name}
           Description: ${criterion.description}
           Max Points: ${criterion.maxPoints}
           Score Given: ${criterionScore} (${scorePercentage.toFixed(2)}%)
           Feedback Provided: "${criterionFeedback}"
           
-          Please provide 3 specific suggestions to improve the feedback for this criterion. Each suggestion should be concise and actionable.
+          Your tasks:
+
+          1. Suggest 3 specific, numbered improvements to the feedback for this criterion to the reviewer. Each suggestion should be concise and actionable.
+          2. After each suggestions, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvements. Write it in the reviewer's voice.
+
+          Format your response as:
+          1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
+          2. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
+          3. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
+          
         `;
         
-        const criterionResponse = await fetch('http://95.8.132.203:11434/api/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: "mistral",
-            prompt: criterionPrompt
-          }),
+        const criterionResponse = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful assistant that provides constructive feedback suggestions for peer reviews. Provide exactly 3 numbered suggestions."
+            },
+            {
+              role: "user",
+              content: criterionPrompt
+            }
+          ],
+          max_tokens: 300,
+          temperature: 0.6
         });
         
-        // Handle response as a stream of JSON objects
-        const criterionText = await criterionResponse.text();
-        let criterionSuggestions = "";
+        const criterionSuggestions = criterionResponse.choices[0]?.message?.content || "No suggestions available";
         
-        try {
-          // Parse the response as a series of JSON objects
-          const responseLines = criterionText.split('\n').filter(line => line.trim() !== '');
-          
-          // Concatenate all response parts
-          for (const line of responseLines) {
-            try {
-              const parsedData = JSON.parse(line);
-              if (parsedData.response !== undefined) {
-                criterionSuggestions += parsedData.response;
-              }
-            } catch (e) {
-              // Skip invalid JSON lines
-              console.warn('Skipping invalid JSON line:', line);
-            }
-          }
-          
-          if (!criterionSuggestions) {
-            criterionSuggestions = "No suggestions available";
-          }
-        } catch (err) {
-          console.error('Error parsing criterion feedback response:', err);
-          criterionSuggestions = "Error parsing AI response. Please try again.";
-        }
-        
-        // Split the response into individual suggestions
+        // Parse the response more carefully to preserve the full suggestions
+        // Split by lines starting with numbers (1., 2., 3., etc.)
         const suggestionList = criterionSuggestions
-          .split(/\d\.|\n-|\n\*/)
+          .split(/(?=\d+\.\s)/)
           .filter(Boolean)
           .map((suggestion: string) => suggestion.trim())
-          .filter((suggestion: string) => suggestion.length > 0)
-          .slice(0, 3);
+          .filter((suggestion: string) => suggestion.length > 10) // Filter out very short fragments
+          .slice(0, 3); // Take only first 3 suggestions
+        
+        console.log('Raw AI response:', criterionSuggestions);
+        console.log('Parsed suggestions:', suggestionList);
         
         suggestions[criterion.id] = suggestionList.length > 0 ? suggestionList : [criterionSuggestions];
       }
@@ -198,14 +201,14 @@ export default function AIReviewAnalysis({
       
       criteria.forEach(criterion => {
         suggestions[criterion.id] = [
-          `Unable to connect to AI service. Please check your network connection.`,
+          `Unable to connect to OpenAI API. Please check your API key and network connection.`,
           `You can try again later or provide feedback manually.`,
           `Consider checking specific aspects of ${criterion.name.toLowerCase()} when writing feedback.`
         ];
       });
       
       setAiSuggestions(suggestions);
-      setAiOverallSuggestion('Unable to connect to AI service. Please check your network connection and try again.');
+      setAiOverallSuggestion('Unable to connect to OpenAI API. Please check your API key and network connection and try again.');
     } finally {
       setIsAnalyzing(false);
       setAnalysisGenerated(true);
@@ -326,7 +329,7 @@ export default function AIReviewAnalysis({
                   <button
                     type="button"
                     className="mt-3 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    onClick={() => onAIOverallFeedbackSelect(aiOverallSuggestion)}
+                    onClick={() => onAIOverallFeedbackSelect(extractQuotedText(aiOverallSuggestion))}
                   >
                     Apply This Suggestion
                   </button>
@@ -347,7 +350,11 @@ export default function AIReviewAnalysis({
                             <button
                               type="button"
                               className="mt-2 inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                              onClick={() => onAIFeedbackSelect(suggestion)}
+                              onClick={() => {
+                                const extractedText = extractQuotedText(suggestion);
+                                console.log('Button clicked - extracted text:', extractedText);
+                                onAIFeedbackSelect(criterion.id, extractedText);
+                              }}
                             >
                               Apply This Suggestion
                             </button>

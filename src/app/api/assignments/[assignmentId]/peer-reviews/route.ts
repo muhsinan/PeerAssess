@@ -4,10 +4,10 @@ import pool from '@/lib/db';
 // GET endpoint for fetching all peer reviews for an assignment
 export async function GET(
   request: NextRequest,
-  { params }: { params: { assignmentId: string } }
+  { params }: { params: Promise<{ assignmentId: string }> }
 ) {
   try {
-    const { assignmentId } = params;
+    const { assignmentId } = await params;
     if (!assignmentId || isNaN(Number(assignmentId))) {
       return NextResponse.json(
         { error: 'Invalid assignment ID' },

@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const queryText = `
       SELECT 
         c.course_id as id,
-        c.name as title,
+        c.name as name,
         CONCAT('C', c.course_id) as code, -- Generate a simple course code if not available
         c.description,
         (SELECT COUNT(*) FROM peer_assessment.course_enrollments ce WHERE ce.course_id = c.course_id) as students_count,
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       courses: result.rows.map(course => ({
         id: course.id,
-        title: course.title,
+        name: course.name,
         code: course.code,
         description: course.description,
         studentsCount: parseInt(course.students_count || '0'),

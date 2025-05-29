@@ -100,15 +100,15 @@ export default function PeerReview() {
     scores[criterion.id] !== undefined
   );
 
-  const handleAIFeedbackSelect = (feedbackText: string) => {
-    // Find the criterion that needs the most improvement
-    const criterionWithLowestScore = rubricCriteria.reduce((lowest, current) => {
-      const lowestScore = scores[lowest.id] || 0;
-      const currentScore = scores[current.id] || 0;
-      return currentScore < lowestScore ? current : lowest;
-    });
+  const handleAIFeedbackSelect = (criterionId: number, feedbackText: string) => {
+    // Update the feedback for the specific criterion
+    const existingFeedback = feedback[criterionId] || '';
     
-    handleFeedbackChange(criterionWithLowestScore.id, feedbackText);
+    handleFeedbackChange(criterionId, 
+      existingFeedback ? 
+      `${existingFeedback}\n\n${feedbackText}` : 
+      feedbackText
+    );
   };
 
   const handleAIOverallFeedbackSelect = (feedbackText: string) => {
@@ -219,6 +219,8 @@ export default function PeerReview() {
                     criteria={rubricCriteria}
                     onScoreChange={handleScoreChange}
                     onFeedbackChange={handleFeedbackChange}
+                    initialScores={scores}
+                    initialFeedback={feedback}
                   />
                   
                   <div className="bg-white p-6 shadow rounded-lg">

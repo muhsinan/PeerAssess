@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface RubricCriterion {
   id: number;
@@ -13,15 +13,28 @@ interface RubricFormProps {
   criteria: RubricCriterion[];
   onScoreChange: (criterionId: number, score: number) => void;
   onFeedbackChange: (criterionId: number, feedback: string) => void;
+  initialScores?: {[key: number]: number};
+  initialFeedback?: {[key: number]: string};
 }
 
 export default function RubricForm({ 
   criteria, 
   onScoreChange, 
-  onFeedbackChange 
+  onFeedbackChange,
+  initialScores = {},
+  initialFeedback = {}
 }: RubricFormProps) {
-  const [scores, setScores] = useState<{[key: number]: number}>({});
-  const [feedback, setFeedback] = useState<{[key: number]: string}>({});
+  const [scores, setScores] = useState<{[key: number]: number}>(initialScores);
+  const [feedback, setFeedback] = useState<{[key: number]: string}>(initialFeedback);
+
+  // Update internal state when props change
+  useEffect(() => {
+    setScores(initialScores);
+  }, [initialScores]);
+
+  useEffect(() => {
+    setFeedback(initialFeedback);
+  }, [initialFeedback]);
 
   const handleScoreChange = (criterionId: number, score: number) => {
     const newScores = { ...scores, [criterionId]: score };
@@ -87,41 +100,6 @@ export default function RubricForm({
               />
             </div>
           </div>
-
-          {/* AI Feedback Suggestions */}
-          {scores[criterion.id] !== undefined && (
-            <div className="mt-4 p-3 bg-indigo-50 rounded-md">
-              <h4 className="text-sm font-medium text-indigo-800 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-1">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-                </svg>
-                AI Feedback Suggestions
-              </h4>
-              <div className="mt-2 text-sm text-black">
-                {scores[criterion.id] < criterion.maxPoints * 0.3 && (
-                  <p>Consider providing specific examples of how the work could be improved to meet the basic requirements.</p>
-                )}
-                {scores[criterion.id] >= criterion.maxPoints * 0.3 && scores[criterion.id] < criterion.maxPoints * 0.7 && (
-                  <p>Consider pointing out both strengths and specific areas where improvements could be made.</p>
-                )}
-                {scores[criterion.id] >= criterion.maxPoints * 0.7 && (
-                  <p>Consider highlighting the exceptional aspects of the work and possibly suggest how it could be developed further.</p>
-                )}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  onClick={() => handleFeedbackChange(criterion.id, feedback[criterion.id] ? 
-                    `${feedback[criterion.id]} I appreciated your approach to this topic, but consider adding more supporting evidence for your key arguments.` : 
-                    "I appreciated your approach to this topic, but consider adding more supporting evidence for your key arguments."
-                  )}
-                >
-                  Add Suggestion
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       ))}
     </div>

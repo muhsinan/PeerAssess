@@ -405,16 +405,13 @@ export default function ReviewPage() {
     }
   };
 
-  const handleAIFeedbackSelect = (feedbackText: string) => {
-    // Find the criterion that needs the most improvement
-    const lowestScoreCriterion = criteriaScores.reduce((lowest, current) => {
-      return (lowest.score <= current.score) ? lowest : current;
-    });
+  const handleAIFeedbackSelect = (criterionId: number, feedbackText: string) => {
+    // Update the feedback for the specific criterion
+    const existingFeedback = criteriaScores.find(cs => cs.criterionId === criterionId)?.feedback || '';
     
-    // Update the feedback for that criterion
-    handleFeedbackChange(lowestScoreCriterion.criterionId, 
-      lowestScoreCriterion.feedback ? 
-      `${lowestScoreCriterion.feedback}\n\n${feedbackText}` : 
+    handleFeedbackChange(criterionId, 
+      existingFeedback ? 
+      `${existingFeedback}\n\n${feedbackText}` : 
       feedbackText
     );
   };
@@ -596,6 +593,8 @@ export default function ReviewPage() {
                       criteria={rubricCriteria}
                       onScoreChange={handleScoreChange}
                       onFeedbackChange={handleFeedbackChange}
+                      initialScores={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.score }), {})}
+                      initialFeedback={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.feedback }), {})}
                     />
                     
                     <div className="bg-white p-6 shadow rounded-lg">

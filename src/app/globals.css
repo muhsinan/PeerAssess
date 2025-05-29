@@ -29,3 +29,16 @@ body {
 input, textarea, select {
   color: #000000 !important;
 }
+
+/* Ensure select dropdown options are visible */
+select option {
+  background-color: white !important;
+  color: #111827 !important;
+  padding: 8px 12px;
+}
+
+/* Fix select dropdown styling */
+select:focus option {
+  background-color: white !important;
+  color: #111827 !important;
+}

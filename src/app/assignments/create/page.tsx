@@ -23,6 +23,7 @@ export default function CreateAssignment() {
     id: number;
     name: string;
   }>>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
 
   // Check if user is authorized (must be an instructor)
   useEffect(() => {
@@ -45,6 +46,8 @@ export default function CreateAssignment() {
   // Fetch courses that this instructor teaches
   const fetchInstructorCourses = async (instructorId: string) => {
     try {
+      setIsLoadingCourses(true);
+      console.log('Fetching courses for instructor:', instructorId);
       const response = await fetch(`/api/dashboard/instructor/courses?instructorId=${instructorId}`);
       
       if (!response.ok) {
@@ -52,10 +55,14 @@ export default function CreateAssignment() {
       }
       
       const data = await response.json();
+      console.log('Courses data received:', data);
+      console.log('Available courses:', data.courses);
       setAvailableCourses(data.courses || []);
     } catch (error) {
       console.error('Error fetching courses:', error);
-      // Non-critical error, so we don't show it to the user
+      setError('Failed to load courses. Please refresh the page.');
+    } finally {
+      setIsLoadingCourses(false);
     }
   };
 
@@ -228,7 +235,7 @@ export default function CreateAssignment() {
                     {/* Course Selection */}
                     <div className="sm:col-span-4">
                       <label htmlFor="courseId" className="block text-sm font-medium text-gray-700">
-                        Course *
+                        Course * {isLoadingCourses && <span className="text-sm text-gray-500">(Loading...)</span>}
                       </label>
                       <div className="mt-1">
                         <select
@@ -236,20 +243,36 @@ export default function CreateAssignment() {
                           name="courseId"
                           value={formData.courseId}
                           onChange={handleInputChange}
-                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md bg-white text-gray-900"
+                          style={{
+                            backgroundColor: 'white',
+                            color: '#111827'
+                          }}
+                          disabled={isLoadingCourses}
                           required
                         >
-                          <option value="">Select a course</option>
+                          <option value="" style={{ backgroundColor: 'white', color: '#111827' }}>
+                            {isLoadingCourses ? 'Loading courses...' : 'Select a course'}
+                          </option>
                           {availableCourses.map(course => (
-                            <option key={course.id} value={course.id}>
+                            <option 
+                              key={course.id} 
+                              value={course.id}
+                              style={{ backgroundColor: 'white', color: '#111827' }}
+                            >
                               {course.name}
                             </option>
                           ))}
                         </select>
                       </div>
-                      {availableCourses.length === 0 && (
+                      {!isLoadingCourses && availableCourses.length === 0 && (
                         <p className="mt-2 text-sm text-red-500">
                           You don't have any courses yet. Please create a course first.
+                        </p>
+                      )}
+                      {!isLoadingCourses && availableCourses.length > 0 && (
+                        <p className="mt-2 text-sm text-green-600">
+                          Found {availableCourses.length} course(s) available.
                         </p>
                       )}
                     </div>

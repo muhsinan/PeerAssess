@@ -12,10 +12,10 @@ interface PeerReview {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { assignmentId: string } }
+  { params }: { params: Promise<{ assignmentId: string }> }
 ) {
   try {
-    const { assignmentId } = params;
+    const { assignmentId } = await params;
     if (!assignmentId || isNaN(Number(assignmentId))) {
       return NextResponse.json(
         { error: 'Invalid assignment ID' },
