@@ -4,7 +4,7 @@ import pool from '@/lib/db';
 // GET: Fetch details for a specific assignment
 export async function GET(
   request: NextRequest,
-  { params }: { params: { assignmentId: string } }
+  { params }: { params: Promise<{ assignmentId: string }> }
 ) {
   try {
     const { assignmentId } = await params;
@@ -75,7 +75,7 @@ export async function GET(
 // PUT: Update an assignment
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { assignmentId: string } }
+  { params }: { params: Promise<{ assignmentId: string }> }
 ) {
   try {
     const { assignmentId } = await params;
@@ -183,7 +183,7 @@ export async function PUT(
 // DELETE: Delete an assignment
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { assignmentId: string } }
+  { params }: { params: Promise<{ assignmentId: string }> }
 ) {
   try {
     const { assignmentId } = await params;

@@ -3,10 +3,10 @@ import pool from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
-    const courseId = params.courseId;
+    const { courseId } = await params;
     
     if (!courseId || isNaN(parseInt(courseId))) {
       return NextResponse.json(
@@ -70,10 +70,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
-    const courseId = params.courseId;
+    const { courseId } = await params;
     
     if (!courseId || isNaN(parseInt(courseId))) {
       return NextResponse.json(

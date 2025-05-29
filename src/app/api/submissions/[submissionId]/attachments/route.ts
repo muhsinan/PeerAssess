@@ -9,10 +9,10 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { submissionId: string } }
+  { params }: { params: Promise<{ submissionId: string }> }
 ) {
   try {
-    const submissionId = params.submissionId;
+    const { submissionId } = await params;
     
     if (!submissionId || isNaN(Number(submissionId))) {
       return NextResponse.json(
@@ -131,10 +131,10 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { submissionId: string } }
+  { params }: { params: Promise<{ submissionId: string }> }
 ) {
   try {
-    const submissionId = params.submissionId;
+    const { submissionId } = await params;
     
     if (!submissionId || isNaN(Number(submissionId))) {
       return NextResponse.json(
@@ -175,10 +175,10 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { submissionId: string } }
+  { params }: { params: Promise<{ submissionId: string }> }
 ) {
   try {
-    const submissionId = params.submissionId;
+    const { submissionId } = await params;
     
     if (!submissionId || isNaN(Number(submissionId))) {
       return NextResponse.json(

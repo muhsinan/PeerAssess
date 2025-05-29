@@ -4,10 +4,10 @@ import pool from '@/lib/db';
 // GET endpoint for fetching a specific peer review
 export async function GET(
   request: NextRequest,
-  { params }: { params: { reviewId: string } }
+  { params }: { params: Promise<{ reviewId: string }> }
 ) {
   try {
-    const reviewId = String(params.reviewId);
+    const { reviewId } = await params;
     
     if (!reviewId || isNaN(Number(reviewId))) {
       return NextResponse.json(
@@ -77,10 +77,10 @@ export async function GET(
 // DELETE endpoint for removing a peer review assignment
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { reviewId: string } }
+  { params }: { params: Promise<{ reviewId: string }> }
 ) {
   try {
-    const reviewId = String(params.reviewId);
+    const { reviewId } = await params;
     
     if (!reviewId || isNaN(Number(reviewId))) {
       return NextResponse.json(

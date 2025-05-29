@@ -17,9 +17,9 @@ interface RubricCriterion {
   }[];
 }
 
-export default function EditRubric({ params }: { params: { id: string } | Promise<{ id: string }> }) {
+export default function EditRubric({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const rubricId = React.use(params as Promise<{ id: string }>).id;
+  const rubricId = React.use(params).id;
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [rubricName, setRubricName] = useState('');

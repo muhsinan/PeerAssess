@@ -4,7 +4,7 @@ import pool from '@/lib/db';
 // GET: Fetch all criteria for a specific rubric
 export async function GET(
   request: NextRequest,
-  { params }: { params: { rubricId: string } }
+  { params }: { params: Promise<{ rubricId: string }> }
 ) {
   try {
     const { rubricId } = await params;
@@ -105,7 +105,7 @@ export async function GET(
 // POST: Create a new criterion for a rubric
 export async function POST(
   request: NextRequest,
-  { params }: { params: { rubricId: string } }
+  { params }: { params: Promise<{ rubricId: string }> }
 ) {
   try {
     const { rubricId } = await params;

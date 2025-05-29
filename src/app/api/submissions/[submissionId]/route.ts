@@ -4,10 +4,10 @@ import pool from '@/lib/db';
 // GET: Fetch details for a specific submission
 export async function GET(
   request: NextRequest,
-  { params }: { params: { submissionId: string } }
+  { params }: { params: Promise<{ submissionId: string }> }
 ) {
   try {
-    const submissionId = String(params.submissionId);
+    const { submissionId } = await params;
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     

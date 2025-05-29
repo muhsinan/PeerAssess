@@ -4,7 +4,7 @@ import pool from '@/lib/db';
 // GET all enrollments for a course
 export async function GET(
   request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
     const { courseId } = await params;
@@ -53,7 +53,7 @@ export async function GET(
 // POST to add a student to a course
 export async function POST(
   request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
     const { courseId } = await params;
@@ -167,7 +167,7 @@ export async function POST(
 // DELETE to remove a student from a course
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
     const { courseId } = await params;

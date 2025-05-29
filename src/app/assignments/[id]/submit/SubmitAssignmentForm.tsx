@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 
-const SubmitAssignmentForm: React.FC = () => {
+interface SubmitAssignmentFormProps {
+  assignmentId: string;
+  userId: string;
+}
+
+const SubmitAssignmentForm: React.FC<SubmitAssignmentFormProps> = ({ assignmentId, userId }) => {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');

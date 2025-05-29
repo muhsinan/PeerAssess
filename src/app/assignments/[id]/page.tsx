@@ -1,6 +1,7 @@
 // Server Component
 import AssignmentDetailsClient from './AssignmentDetailsClient';
 
-export default function AssignmentDetailsPage({ params }: { params: { id: string } }) {
-  return <AssignmentDetailsClient assignmentId={params.id} />;
+export default async function AssignmentDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <AssignmentDetailsClient assignmentId={id} />;
 } 

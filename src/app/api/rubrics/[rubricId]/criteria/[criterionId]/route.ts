@@ -4,10 +4,10 @@ import pool from '@/lib/db';
 // GET: Fetch a specific criterion by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { rubricId: string, criterionId: string } }
+  { params }: { params: Promise<{ rubricId: string, criterionId: string }> }
 ) {
   try {
-    const { rubricId, criterionId } = params;
+    const { rubricId, criterionId } = await params;
     
     if (!rubricId || isNaN(parseInt(rubricId)) || !criterionId || isNaN(parseInt(criterionId))) {
       return NextResponse.json(
@@ -89,10 +89,10 @@ export async function GET(
 // PUT: Update a criterion
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { rubricId: string, criterionId: string } }
+  { params }: { params: Promise<{ rubricId: string, criterionId: string }> }
 ) {
   try {
-    const { rubricId, criterionId } = params;
+    const { rubricId, criterionId } = await params;
     
     if (!rubricId || isNaN(parseInt(rubricId)) || !criterionId || isNaN(parseInt(criterionId))) {
       return NextResponse.json(
@@ -206,10 +206,10 @@ export async function PUT(
 // DELETE: Remove a criterion
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { rubricId: string, criterionId: string } }
+  { params }: { params: Promise<{ rubricId: string, criterionId: string }> }
 ) {
   try {
-    const { rubricId, criterionId } = params;
+    const { rubricId, criterionId } = await params;
     
     if (!rubricId || isNaN(parseInt(rubricId)) || !criterionId || isNaN(parseInt(criterionId))) {
       return NextResponse.json(

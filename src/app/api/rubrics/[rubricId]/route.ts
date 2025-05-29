@@ -4,7 +4,7 @@ import pool from '@/lib/db';
 // GET: Fetch a specific rubric by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { rubricId: string } }
+  { params }: { params: Promise<{ rubricId: string }> }
 ) {
   try {
     const { rubricId } = await params;
@@ -79,7 +79,7 @@ export async function GET(
 // PUT: Update a rubric
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { rubricId: string } }
+  { params }: { params: Promise<{ rubricId: string }> }
 ) {
   try {
     const { rubricId } = await params;
@@ -179,7 +179,7 @@ export async function PUT(
 // DELETE: Remove a rubric
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { rubricId: string } }
+  { params }: { params: Promise<{ rubricId: string }> }
 ) {
   try {
     const { rubricId } = await params;

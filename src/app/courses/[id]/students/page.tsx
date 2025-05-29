@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import Layout from '../../../../components/layout/Layout';
 import Link from 'next/link';
 
-export default function AddStudentsToCourse({ params }: { params: { id: string } | Promise<{ id: string }> }) {
+export default function AddStudentsToCourse({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const courseId = React.use(params as Promise<{ id: string }>).id;
+  const courseId = React.use(params).id;
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [courseName, setCourseName] = useState('Loading...');
