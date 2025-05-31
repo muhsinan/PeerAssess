@@ -23,8 +23,24 @@ export default function CreateRubric() {
     description: string;
     maxPoints: number;
     weight: number;
+    levels: Array<{
+      id: number;
+      description: string;
+      score: number;
+    }>;
   }>>([
-    { name: '', description: '', maxPoints: 10, weight: 1.0 }
+    { 
+      name: '', 
+      description: '', 
+      maxPoints: 10, 
+      weight: 1.0,
+      levels: [
+        { id: 1, description: 'Does not meet expectations', score: Math.round(10 * 0.25) },
+        { id: 2, description: 'Partially meets expectations', score: Math.round(10 * 0.5) },
+        { id: 3, description: 'Meets expectations', score: Math.round(10 * 0.75) },
+        { id: 4, description: 'Exceeds expectations', score: 10 },
+      ]
+    }
   ]);
   
   const [availableAssignments, setAvailableAssignments] = useState<Array<{
@@ -85,12 +101,36 @@ export default function CreateRubric() {
       ...newCriteria[index], 
       [field]: field === 'maxPoints' || field === 'weight' ? Number(value) : value 
     };
+    
+    // If max points changed, update the default level scores proportionally
+    if (field === 'maxPoints' && typeof value === 'string') {
+      const maxPoints = Number(value);
+      if (maxPoints > 0) {
+        newCriteria[index].levels = newCriteria[index].levels.map((level, levelIndex) => ({
+          ...level,
+          score: Math.round(maxPoints * (0.25 * (levelIndex + 1)))
+        }));
+      }
+    }
+    
     setCriteria(newCriteria);
   };
 
   // Add a new criterion
   const addCriterion = () => {
-    setCriteria([...criteria, { name: '', description: '', maxPoints: 10, weight: 1.0 }]);
+    const defaultMaxPoints = 10;
+    setCriteria([...criteria, { 
+      name: '', 
+      description: '', 
+      maxPoints: defaultMaxPoints, 
+      weight: 1.0, 
+      levels: [
+        { id: 1, description: 'Does not meet expectations', score: Math.round(defaultMaxPoints * 0.25) },
+        { id: 2, description: 'Partially meets expectations', score: Math.round(defaultMaxPoints * 0.5) },
+        { id: 3, description: 'Meets expectations', score: Math.round(defaultMaxPoints * 0.75) },
+        { id: 4, description: 'Exceeds expectations', score: defaultMaxPoints },
+      ] 
+    }]);
   };
 
   // Remove a criterion
@@ -100,6 +140,53 @@ export default function CreateRubric() {
       newCriteria.splice(index, 1);
       setCriteria(newCriteria);
     }
+  };
+
+  // Update level description
+  const updateLevelDescription = (criterionIndex: number, levelId: number, description: string) => {
+    const newCriteria = [...criteria];
+    newCriteria[criterionIndex].levels = newCriteria[criterionIndex].levels.map(level => 
+      level.id === levelId ? { ...level, description } : level
+    );
+    setCriteria(newCriteria);
+  };
+
+  // Update level score
+  const updateLevelScore = (criterionIndex: number, levelId: number, score: number) => {
+    const newCriteria = [...criteria];
+    newCriteria[criterionIndex].levels = newCriteria[criterionIndex].levels.map(level => 
+      level.id === levelId ? { ...level, score } : level
+    );
+    setCriteria(newCriteria);
+  };
+
+  // Add a new level to a criterion
+  const addLevel = (criterionIndex: number) => {
+    const newCriteria = [...criteria];
+    const criterion = newCriteria[criterionIndex];
+    const newLevelId = criterion.levels.length > 0 ? Math.max(...criterion.levels.map(l => l.id)) + 1 : 1;
+    
+    // Calculate a reasonable default score (slightly higher than the current highest score)
+    const maxExistingScore = criterion.levels.length > 0 ? Math.max(...criterion.levels.map(l => l.score)) : 0;
+    const defaultScore = Math.min(maxExistingScore + Math.round(criterion.maxPoints * 0.1), criterion.maxPoints);
+    
+    criterion.levels.push({
+      id: newLevelId,
+      description: 'New level description',
+      score: defaultScore
+    });
+    setCriteria(newCriteria);
+  };
+
+  // Remove a level from a criterion
+  const removeLevel = (criterionIndex: number, levelId: number) => {
+    const newCriteria = [...criteria];
+    const criterion = newCriteria[criterionIndex];
+    if (criterion.levels.length <= 1) {
+      return; // Don't remove the last level
+    }
+    criterion.levels = criterion.levels.filter(level => level.id !== levelId);
+    setCriteria(newCriteria);
   };
 
   // Handle form submission
@@ -162,7 +249,12 @@ export default function CreateRubric() {
             title: criterion.name,
             description: criterion.description,
             maxPoints: criterion.maxPoints,
-            weight: criterion.weight
+            weight: criterion.weight,
+            levels: criterion.levels.map(level => ({
+              id: level.id,
+              description: level.description,
+              points: level.score
+            }))
           })
         });
         
@@ -424,6 +516,80 @@ export default function CreateRubric() {
                               <p className="mt-2 text-xs text-gray-500">
                                 Weight determines the relative importance of this criterion (default: 1.0)
                               </p>
+                            </div>
+                          </div>
+                          
+                          {/* Performance Levels */}
+                          <div className="mt-6">
+                            <div className="flex justify-between items-center mb-4">
+                              <h5 className="text-sm font-medium text-gray-900">Performance Levels</h5>
+                              <button
+                                type="button"
+                                onClick={() => addLevel(index)}
+                                className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                              >
+                                Add Level
+                              </button>
+                            </div>
+                            
+                            <div className="bg-gray-50 rounded-md overflow-hidden">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Level
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Description
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Score
+                                    </th>
+                                    <th scope="col" className="relative px-6 py-3">
+                                      <span className="sr-only">Actions</span>
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {criterion.levels.map((level, levelIndex) => (
+                                    <tr key={level.id}>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        Level {levelIndex + 1}
+                                      </td>
+                                      <td className="px-6 py-4 text-sm text-gray-500">
+                                        <textarea
+                                          rows={2}
+                                          value={level.description}
+                                          onChange={(e) => updateLevelDescription(index, level.id, e.target.value)}
+                                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                        />
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max={criterion.maxPoints}
+                                          value={level.score}
+                                          onChange={(e) => updateLevelScore(index, level.id, parseInt(e.target.value, 10) || 0)}
+                                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-24 sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                        />
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button
+                                          type="button"
+                                          onClick={() => removeLevel(index, level.id)}
+                                          disabled={criterion.levels.length <= 1}
+                                          className={`text-red-600 hover:text-red-900 ${
+                                            criterion.levels.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                          }`}
+                                        >
+                                          Remove
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         </div>

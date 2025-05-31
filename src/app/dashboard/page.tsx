@@ -780,7 +780,7 @@ function InstructorDashboard({ userName }: { userName: string }) {
                       <li key={course.id} className="py-4">
                         <div className="flex flex-col space-y-2">
                           <div className="flex items-center justify-between">
-                            <h4 className="text-md font-medium text-black">{course.title}</h4>
+                            <h4 className="text-md font-medium text-black">{course.name}</h4>
                             <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                               {course.code}
                             </span>

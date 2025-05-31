@@ -52,13 +52,49 @@ export async function GET(
         rc.criterion_id
     `, [rubric.id]);
     
+    // Add performance levels to each criterion (mock levels for now since they're not stored in DB)
+    const criteria = criteriaResult.rows.map(criterion => {
+      const maxPoints = criterion.maxPoints || 10;
+      const levels = [
+        {
+          id: 1,
+          description: 'Does not meet expectations',
+          points: Math.round(maxPoints * 0.25),
+          orderPosition: 1
+        },
+        {
+          id: 2,
+          description: 'Partially meets expectations',
+          points: Math.round(maxPoints * 0.5),
+          orderPosition: 2
+        },
+        {
+          id: 3,
+          description: 'Meets expectations',
+          points: Math.round(maxPoints * 0.75),
+          orderPosition: 3
+        },
+        {
+          id: 4,
+          description: 'Exceeds expectations',
+          points: maxPoints,
+          orderPosition: 4
+        }
+      ];
+
+      return {
+        ...criterion,
+        levels
+      };
+    });
+    
     return NextResponse.json({
       rubric: {
         id: rubric.id,
         name: rubric.name,
         description: rubric.description,
       },
-      criteria: criteriaResult.rows
+      criteria
     });
   } catch (error) {
     console.error('Error fetching assignment rubric:', error);

@@ -12,6 +12,12 @@ interface RubricCriterion {
   name: string;
   description: string;
   maxPoints: number;
+  levels?: Array<{
+    id: number;
+    description: string;
+    points: number;
+    orderPosition: number;
+  }>;
 }
 
 interface Review {
