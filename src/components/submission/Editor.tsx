@@ -20,7 +20,7 @@ export default function RichTextEditor({
 
   return (
     <Editor
-      apiKey="your-api-key" // Replace with your TinyMCE API key or remove to use the free dev tier
+      apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY || "5vzbklf4x3hbeb8mcumkruowbljz3slj1ynpvt2xcn2l6z2m"}
       onInit={(evt, editor) => editorRef.current = editor}
       initialValue={initialValue}
       onEditorChange={onEditorChange}
@@ -38,7 +38,20 @@ export default function RichTextEditor({
           'removeformat | help',
         content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
         placeholder,
-        promotion: false
+        promotion: false,
+        // Enhanced VM compatibility settings
+        referrer_policy: 'origin',
+        target_list: false,
+        link_default_target: '_blank',
+        setup: (editor: any) => {
+          editor.on('init', () => {
+            console.log('TinyMCE editor initialized successfully');
+          });
+          editor.on('LoadError', (e: any) => {
+            console.error('TinyMCE failed to load:', e);
+            console.log('Falling back to basic textarea if needed');
+          });
+        }
       }}
     />
   );

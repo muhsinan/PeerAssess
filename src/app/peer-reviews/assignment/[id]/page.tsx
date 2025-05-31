@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface Student {
   id: number;
@@ -33,6 +34,25 @@ interface PeerReview {
 export default function AssignmentPeerReviewPage() {
   const params = useParams();
   const router = useRouter();
+  
+  // Handle the case where params might be null or id might not be available
+  if (!params || !params.id) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Invalid Assignment ID</h2>
+          <p className="mt-2 text-gray-600">The assignment ID is missing or invalid.</p>
+          <Link
+            href="/dashboard"
+            className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  
   const assignmentId = params.id as string;
   
   const [assignment, setAssignment] = useState<any>(null);

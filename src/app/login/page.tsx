@@ -22,13 +22,13 @@ function LoginForm() {
 
   useEffect(() => {
     // Check if user was redirected from registration
-    const registered = searchParams.get('registered');
+    const registered = searchParams?.get('registered');
     if (registered === 'true') {
       setRegistrationSuccess(true);
     }
     
     // Check if user was redirected after password reset
-    const reset = searchParams.get('reset');
+    const reset = searchParams?.get('reset');
     if (reset === 'success') {
       setPasswordResetSuccess(true);
     }

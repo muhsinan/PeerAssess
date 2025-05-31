@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
+  // swcMinify is enabled by default in Next.js 15
   // Ensure proper handling of dynamic routes
   async rewrites() {
     return [

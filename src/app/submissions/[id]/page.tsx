@@ -8,6 +8,29 @@ import Link from 'next/link';
 export default function ViewSubmission() {
   const router = useRouter();
   const params = useParams();
+  
+  // Handle the case where params might be null or id might not be available
+  if (!params || !params.id) {
+    return (
+      <Layout>
+        <div className="py-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-gray-900">Invalid Submission ID</h2>
+              <p className="mt-2 text-gray-600">The submission ID is missing or invalid.</p>
+              <Link
+                href="/dashboard"
+                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                Return to Dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+  
   const submissionId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);

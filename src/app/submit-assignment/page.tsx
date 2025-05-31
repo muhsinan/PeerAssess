@@ -1,9 +1,18 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import Layout from '../../components/layout/Layout';
-import RichTextEditor from '../../components/submission/Editor';
 import Link from 'next/link';
+
+// Dynamically import the RichTextEditor to prevent SSR issues
+const RichTextEditor = dynamic(
+  () => import('../../components/submission/Editor'),
+  { 
+    ssr: false,
+    loading: () => <div className="animate-pulse bg-gray-200 h-64 rounded-md"></div>
+  }
+);
 
 export default function SubmitAssignment() {
   const [title, setTitle] = useState('');

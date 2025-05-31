@@ -8,7 +8,7 @@ import Link from 'next/link';
 export default function EditAssignment() {
   const router = useRouter();
   const params = useParams();
-  const assignmentId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const assignmentId = params && Array.isArray(params.id) ? params.id[0] : params?.id;
   
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
