@@ -74,9 +74,35 @@ export async function GET(
     
     const result = await pool.query(query, queryParams);
     
+    // For each submission, get its attachments
+    const submissionsWithAttachments = await Promise.all(
+      result.rows.map(async (submission) => {
+        const attachmentsResult = await pool.query(`
+          SELECT 
+            attachment_id as id,
+            file_name as "fileName",
+            file_path as "filePath",
+            file_size as "fileSize",
+            file_type as "fileType",
+            upload_date as "uploadDate"
+          FROM 
+            peer_assessment.submission_attachments
+          WHERE 
+            submission_id = $1
+          ORDER BY 
+            upload_date DESC
+        `, [submission.id]);
+        
+        return {
+          ...submission,
+          attachments: attachmentsResult.rows
+        };
+      })
+    );
+    
     return NextResponse.json({
       assignmentId: assignmentId,
-      submissions: result.rows
+      submissions: submissionsWithAttachments
     });
   } catch (error) {
     console.error('Error fetching submissions:', error);

@@ -46,8 +46,8 @@ export async function PATCH(
     const updateResult = await pool.query(`
       UPDATE peer_assessment.peer_reviews
       SET 
-        status = $1,
-        completed_date = CASE WHEN $1 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
+        status = $1::VARCHAR,
+        completed_date = CASE WHEN $1::VARCHAR = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
       WHERE review_id = $2
       RETURNING 
         review_id as id,

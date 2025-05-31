@@ -41,6 +41,14 @@ interface Submission {
   studentId?: number;
   assignmentTitle: string;
   courseName: string;
+  attachments?: Array<{
+    id: number;
+    fileName: string;
+    filePath: string;
+    fileSize: number;
+    fileType: string;
+    uploadDate: string;
+  }>;
 }
 
 interface CriterionScore {
@@ -232,7 +240,7 @@ export default function ReviewPage() {
         setReview(reviewData.review);
         
         // Fetch submission details
-        const submissionResponse = await fetch(`/api/submissions/${reviewData.review.submissionId}`);
+        const submissionResponse = await fetch(`/api/submissions/${reviewData.review.submissionId}?userId=${userIdFromStorage}`);
         if (!submissionResponse.ok) {
           throw new Error('Failed to fetch submission details');
         }
@@ -453,6 +461,56 @@ export default function ReviewPage() {
     return criterionScore && criterionScore.score > 0;
   });
 
+  // Handle attachment download
+  const handleDownloadAttachment = async (attachmentId: number, fileName: string) => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`/api/attachments/${attachmentId}/download?userId=${userId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to download attachment');
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download attachment');
+    }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   if (isLoading) {
     return (
       <Layout>
@@ -606,10 +664,59 @@ export default function ReviewPage() {
 
             <div className="mt-6">
               {activeTab === 'submission' ? (
-                <div className="bg-white shadow rounded-lg overflow-hidden">
-                  <div className="px-4 py-5 sm:p-6">
-                    <div className="prose max-w-none text-black" dangerouslySetInnerHTML={{ __html: submission?.content || '' }}></div>
+                <div className="space-y-6">
+                  {/* Submission Content */}
+                  <div className="bg-white shadow rounded-lg overflow-hidden">
+                    <div className="px-4 py-5 sm:px-6 bg-purple-50">
+                      <h3 className="text-lg font-medium leading-6 text-purple-800">Submission Content</h3>
+                    </div>
+                    <div className="px-4 py-5 sm:p-6">
+                      <div className="prose max-w-none text-black" dangerouslySetInnerHTML={{ __html: submission?.content || '' }}></div>
+                    </div>
                   </div>
+
+                  {/* Attachments */}
+                  {submission?.attachments && submission.attachments.length > 0 && (
+                    <div className="bg-white shadow rounded-lg overflow-hidden">
+                      <div className="px-4 py-5 sm:px-6 bg-purple-50">
+                        <h3 className="text-lg font-medium leading-6 text-purple-800">Attachments</h3>
+                      </div>
+                      <div className="px-4 py-5 sm:p-6">
+                        <ul className="divide-y divide-gray-200">
+                          {submission.attachments.map((attachment) => (
+                            <li key={attachment.id} className="py-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                  <svg className="flex-shrink-0 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                                  </svg>
+                                  <div className="ml-3 flex-1">
+                                    <p className="text-sm font-medium text-gray-900 truncate">
+                                      {attachment.fileName}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {formatFileSize(attachment.fileSize)} • Uploaded {formatDate(attachment.uploadDate)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="ml-4 flex-shrink-0">
+                                  <button
+                                    onClick={() => handleDownloadAttachment(attachment.id, attachment.fileName)}
+                                    className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                                  >
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Download
+                                  </button>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <form onSubmit={(e) => handleSubmit(e, false)}>

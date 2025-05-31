@@ -1,10 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import RubricForm from '../../../components/review/RubricForm';
 import AIReviewAnalysis from '../../../components/review/AIReviewAnalysis';
 import Link from 'next/link';
+
+interface Submission {
+  id: number;
+  title: string;
+  content: string;
+  submissionDate: string;
+  studentName: string;
+  studentEmail: string;
+  assignmentTitle: string;
+  courseName: string;
+  attachments: Array<{
+    id: number;
+    fileName: string;
+    filePath: string;
+    fileSize: number;
+    fileType: string;
+    uploadDate: string;
+  }>;
+}
 
 export default function PeerReview() {
   const router = useRouter();
@@ -31,36 +50,16 @@ export default function PeerReview() {
   const reviewId = params.id;
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [overallFeedback, setOverallFeedback] = useState('');
   const [scores, setScores] = useState<{[key: number]: number}>({});
   const [feedback, setFeedback] = useState<{[key: number]: string}>({});
   const [activeTab, setActiveTab] = useState('submission');
   const [submitted, setSubmitted] = useState(false);
+  const [submission, setSubmission] = useState<Submission | null>(null);
   
-  // Mock data - would be fetched from API in real app
-  const assignment = {
-    id: reviewId,
-    title: "Essay on Climate Change",
-    author: "Jane Smith",
-    course: "Environmental Science 101",
-    submittedDate: "2024-03-10",
-    content: `<h2>Climate Change: A Global Challenge</h2>
-      <p>Climate change represents one of the most significant challenges facing humanity in the 21st century. This essay explores the causes, effects, and potential solutions to this global crisis.</p>
-      
-      <h3>Causes of Climate Change</h3>
-      <p>Human activities have been the primary driver of climate change, primarily due to burning fossil fuels like coal, oil, and natural gas, which results in the greenhouse effect. Deforestation and industrial processes also contribute significantly.</p>
-      
-      <h3>Effects of Climate Change</h3>
-      <p>The effects of climate change are far-reaching and include rising global temperatures, melting ice caps and glaciers, rising sea levels, more frequent and severe weather events, and disruptions to ecosystems worldwide.</p>
-      
-      <h3>Potential Solutions</h3>
-      <p>Addressing climate change requires a multi-faceted approach, including transitioning to renewable energy sources, improving energy efficiency, implementing carbon pricing, promoting sustainable land use, and fostering international cooperation.</p>
-      
-      <h3>Conclusion</h3>
-      <p>Climate change presents an unprecedented challenge that requires immediate and coordinated action at all levels of society. By implementing comprehensive solutions and fostering global collaboration, we can mitigate its worst effects and build a more sustainable future.</p>`,
-  };
-
-  // Mock rubric criteria
+  // Mock rubric criteria - in real app, this would be fetched from API
   const rubricCriteria = [
     {
       id: 1,
@@ -87,6 +86,91 @@ export default function PeerReview() {
       maxPoints: 20
     }
   ];
+
+  // Fetch review and submission data
+  useEffect(() => {
+    const fetchReviewData = async () => {
+      try {
+        setIsLoading(true);
+        const userId = localStorage.getItem('userId');
+        
+        // First, get the review details to find the submission ID
+        const reviewResponse = await fetch(`/api/peer-reviews/${reviewId}`);
+        if (!reviewResponse.ok) {
+          throw new Error('Review not found or access denied');
+        }
+        
+        const reviewData = await reviewResponse.json();
+        const submissionId = reviewData.submissionId;
+        
+        // Then fetch the submission details with attachments
+        const submissionResponse = await fetch(`/api/submissions/${submissionId}?userId=${userId}`);
+        if (!submissionResponse.ok) {
+          throw new Error('Failed to fetch submission details');
+        }
+        
+        const submissionData = await submissionResponse.json();
+        setSubmission(submissionData.submission);
+      } catch (error) {
+        console.error('Error fetching review data:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load review data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReviewData();
+  }, [reviewId]);
+
+  // Handle attachment download
+  const handleDownloadAttachment = async (attachmentId: number, fileName: string) => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`/api/attachments/${attachmentId}/download?userId=${userId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to download attachment');
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download attachment');
+    }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   const handleScoreChange = (criterionId: number, score: number) => {
     setScores({ ...scores, [criterionId]: score });
@@ -137,6 +221,54 @@ export default function PeerReview() {
     );
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading review data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Error</h2>
+          <p className="mt-2 text-gray-600">{error}</p>
+          <Link
+            href="/dashboard"
+            className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // No submission data
+  if (!submission) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900">Submission Not Found</h2>
+          <p className="mt-2 text-gray-600">The submission for this review could not be found.</p>
+          <Link
+            href="/dashboard"
+            className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -183,10 +315,10 @@ export default function PeerReview() {
           <div className="border-b border-gray-200 pb-5 flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold leading-7 text-black sm:text-3xl sm:truncate">
-                Peer Review: {assignment.title}
+                Peer Review: {submission.title}
               </h1>
               <p className="mt-2 max-w-4xl text-sm text-black">
-                By: {assignment.author} | Course: {assignment.course} | Submitted: {assignment.submittedDate}
+                By: {submission.studentName} | Course: {submission.courseName} | Submitted: {formatDate(submission.submissionDate)}
               </p>
             </div>
 
@@ -226,10 +358,59 @@ export default function PeerReview() {
 
           <div className="mt-6">
             {activeTab === 'submission' ? (
-              <div className="bg-white shadow rounded-lg overflow-hidden">
-                <div className="px-4 py-5 sm:p-6">
-                  <div className="prose max-w-none text-black" dangerouslySetInnerHTML={{ __html: assignment.content }}></div>
+              <div className="space-y-6">
+                {/* Submission Content */}
+                <div className="bg-white shadow rounded-lg overflow-hidden">
+                  <div className="px-4 py-5 sm:px-6 bg-purple-50">
+                    <h3 className="text-lg font-medium leading-6 text-purple-800">Submission Content</h3>
+                  </div>
+                  <div className="px-4 py-5 sm:p-6">
+                    <div className="prose max-w-none text-black" dangerouslySetInnerHTML={{ __html: submission.content }}></div>
+                  </div>
                 </div>
+
+                {/* Attachments */}
+                {submission.attachments && submission.attachments.length > 0 && (
+                  <div className="bg-white shadow rounded-lg overflow-hidden">
+                    <div className="px-4 py-5 sm:px-6 bg-purple-50">
+                      <h3 className="text-lg font-medium leading-6 text-purple-800">Attachments</h3>
+                    </div>
+                    <div className="px-4 py-5 sm:p-6">
+                      <ul className="divide-y divide-gray-200">
+                        {submission.attachments.map((attachment) => (
+                          <li key={attachment.id} className="py-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <svg className="flex-shrink-0 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                                </svg>
+                                <div className="ml-3 flex-1">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {attachment.fileName}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {formatFileSize(attachment.fileSize)} • Uploaded {formatDate(attachment.uploadDate)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="ml-4 flex-shrink-0">
+                                <button
+                                  onClick={() => handleDownloadAttachment(attachment.id, attachment.fileName)}
+                                  className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                                >
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Download
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <form onSubmit={handleSubmit}>
@@ -264,7 +445,7 @@ export default function PeerReview() {
                     scores={scores}
                     feedback={feedback}
                     overallFeedback={overallFeedback}
-                    assignment={assignment}
+                    assignment={submission}
                     onAIFeedbackSelect={handleAIFeedbackSelect}
                     onAIOverallFeedbackSelect={handleAIOverallFeedbackSelect}
                   />

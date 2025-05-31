@@ -72,9 +72,33 @@ export async function GET(
       
       const userRole = userResult.rows[0].role;
       
-      // Instructors can view all submissions
-      // Students can only view their own submissions
-      if (userRole !== 'instructor' && submission.student_id !== parseInt(userId)) {
+      // Check permissions:
+      // 1. Instructors can view all submissions
+      // 2. Students can view their own submissions
+      // 3. Students can view submissions they are assigned to peer review
+      let hasAccess = false;
+      
+      if (userRole === 'instructor') {
+        hasAccess = true;
+      } else if (userRole === 'student') {
+        // Check if it's their own submission
+        if (submission.student_id === parseInt(userId)) {
+          hasAccess = true;
+        } else {
+          // Check if they are assigned as a peer reviewer for this submission
+          const peerReviewCheck = await pool.query(`
+            SELECT review_id 
+            FROM peer_assessment.peer_reviews 
+            WHERE submission_id = $1 AND reviewer_id = $2
+          `, [submissionId, userId]);
+          
+          if (peerReviewCheck.rows.length > 0) {
+            hasAccess = true;
+          }
+        }
+      }
+      
+      if (!hasAccess) {
         return NextResponse.json(
           { error: 'You do not have permission to view this submission' },
           { status: 403 }
@@ -109,6 +133,25 @@ export async function GET(
     `, [submissionId]);
 
     const reviews = reviewsResult.rows;
+
+    // Get attachments for this submission
+    const attachmentsResult = await pool.query(`
+      SELECT 
+        attachment_id as id,
+        file_name as "fileName",
+        file_path as "filePath",
+        file_size as "fileSize",
+        file_type as "fileType",
+        upload_date as "uploadDate"
+      FROM 
+        peer_assessment.submission_attachments
+      WHERE 
+        submission_id = $1
+      ORDER BY 
+        upload_date DESC
+    `, [submissionId]);
+
+    const attachments = attachmentsResult.rows;
     
     return NextResponse.json({
       submission: {
@@ -124,6 +167,7 @@ export async function GET(
         studentId: submission.student_id,
         studentName: submission.student_name,
         studentEmail: submission.student_email,
+        attachments: attachments,
         reviews: reviews.map(review => ({
           id: review.id,
           reviewerId: review.reviewer_id,

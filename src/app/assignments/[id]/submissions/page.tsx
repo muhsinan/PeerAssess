@@ -34,6 +34,14 @@ export default function AssignmentSubmissions() {
     status: string;
     score?: number;
     reviewsCount: number;
+    attachments?: Array<{
+      id: number;
+      fileName: string;
+      filePath: string;
+      fileSize: number;
+      fileType: string;
+      uploadDate: string;
+    }>;
   }>>([]);
 
   // Check if user is authorized (must be an instructor)
@@ -99,6 +107,34 @@ export default function AssignmentSubmissions() {
     }
   };
 
+  // Handle attachment download
+  const handleDownloadAttachment = async (attachmentId: number, fileName: string) => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await fetch(`/api/attachments/${attachmentId}/download?userId=${userId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to download attachment');
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download attachment');
+    }
+  };
+
   // Format date for display
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
@@ -120,6 +156,15 @@ export default function AssignmentSubmissions() {
       console.error('Error formatting date:', error);
       return 'N/A';
     }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Status badge component
@@ -318,6 +363,9 @@ export default function AssignmentSubmissions() {
                                 Score
                               </th>
                               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Attachments
+                              </th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Reviews
                               </th>
                               <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -356,6 +404,30 @@ export default function AssignmentSubmissions() {
                                     <span className="text-gray-900 font-medium">{submission.score}</span>
                                   ) : (
                                     <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  {submission.attachments && submission.attachments.length > 0 ? (
+                                    <div className="space-y-1">
+                                      {submission.attachments.map((attachment) => (
+                                        <div key={attachment.id} className="flex items-center">
+                                          <button
+                                            onClick={() => handleDownloadAttachment(attachment.id, attachment.fileName)}
+                                            className="flex items-center text-xs text-purple-600 hover:text-purple-900"
+                                          >
+                                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            <span className="truncate max-w-24">{attachment.fileName}</span>
+                                          </button>
+                                          <span className="text-xs text-gray-400 ml-1">
+                                            ({formatFileSize(attachment.fileSize)})
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-400 text-sm">No files</span>
                                   )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

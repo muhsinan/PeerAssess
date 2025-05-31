@@ -216,10 +216,10 @@ export default function SubmitAssignment() {
                     <h4 className="text-sm font-medium text-black">Selected Files:</h4>
                     <ul className="mt-2 divide-y divide-gray-200 border border-gray-200 rounded-md">
                       {attachments.map((file, index) => (
-                        <li key={index} className="pl-3 pr-4 py-3 flex items-center justify-between text-sm">
-                          <div className="w-0 flex-1 flex items-center">
+                        <li key={index} className="pl-3 pr-4 py-3 flex items-center justify-between text-sm text-black">
+                          <div className="w-0 flex-1 flex items-center text-black">
                             <svg
-                              className="flex-shrink-0 h-5 w-5 text-gray-400"
+                              className="flex-shrink-0 h-5 w-5 text-gray-600"
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 20 20"
                               fill="currentColor"
@@ -231,7 +231,7 @@ export default function SubmitAssignment() {
                                 clipRule="evenodd"
                               />
                             </svg>
-                            <span className="ml-2 flex-1 truncate">
+                            <span className="ml-2 flex-1 truncate font-bold text-black">
                               {file.name}
                             </span>
                           </div>

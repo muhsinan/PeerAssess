@@ -70,8 +70,8 @@ export async function POST(
         SET 
           overall_feedback = $1,
           total_score = $2,
-          status = $3,
-          completed_date = CASE WHEN $4 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
+          status = $3::VARCHAR,
+          completed_date = CASE WHEN $4::VARCHAR = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
         WHERE review_id = $5
         RETURNING 
           review_id as id,
