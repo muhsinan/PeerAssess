@@ -24,24 +24,35 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
   const [isLoading, setIsLoading] = useState(true);
   const [rubricName, setRubricName] = useState('');
   const [rubricDescription, setRubricDescription] = useState('');
+  const [assignmentIds, setAssignmentIds] = useState<number[]>([]);
   const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  const [availableAssignments, setAvailableAssignments] = useState<Array<{
+    id: number;
+    title: string;
+    courseId: number;
+    courseName: string;
+    hasRubric: boolean;
+  }>>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
   // Check if user is authorized (must be an instructor)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const role = localStorage.getItem('userRole');
+      const userId = localStorage.getItem('userId');
       setUserRole(role);
       
       // If not an instructor, redirect to dashboard
       if (role !== 'instructor') {
         router.push('/dashboard');
+      } else if (userId) {
+        // Load rubric data and available assignments
+        fetchRubricData();
+        fetchInstructorAssignments(userId);
       }
-      
-      // Load rubric data
-      fetchRubricData();
     }
   }, [router, rubricId]);
 
@@ -59,42 +70,65 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
       }
       
       const data = await response.json();
-      const rubricData = data.rubric;
       
-      setRubricName(rubricData.name);
-      setRubricDescription(rubricData.description || '');
-      
-      // Fetch criteria for the rubric
-      const criteriaResponse = await fetch(`/api/rubrics/${rubricId}/criteria`);
-      
-      if (!criteriaResponse.ok) {
-        const errorData = await criteriaResponse.json();
-        throw new Error(errorData.error || 'Failed to fetch rubric criteria');
-      }
-      
-      const criteriaData = await criteriaResponse.json();
-      
-      // Transform API data to component state format
-      setCriteria(criteriaData.criteria.map((criterion: any) => ({
+      setRubricName(data.name);
+      setRubricDescription(data.description || '');
+      setAssignmentIds(data.assignments ? data.assignments.map((a: any) => a.id) : []);
+      setCriteria(data.criteria ? data.criteria.map((criterion: any) => ({
         id: criterion.id,
-        title: criterion.title,
+        title: criterion.name,
         description: criterion.description || '',
-        points: criterion.maxPoints,
-        levels: criterion.levels.map((level: any) => ({
+        points: criterion.max_points,
+        levels: criterion.levels ? criterion.levels.map((level: any) => ({
           id: level.id,
           description: level.description,
-          score: level.points
-        }))
-      })));
+          score: level.score
+        })) : []
+      })) : []);
       
       setIsLoading(false);
       setIsDirty(false);
     } catch (error) {
       console.error('Error fetching rubric data:', error);
-      // If there's an error, we could show it to the user
-      // For now, just fall back to the dashboard
       router.push('/dashboard');
     }
+  };
+
+  // Fetch assignments that this instructor has created
+  const fetchInstructorAssignments = async (instructorId: string) => {
+    try {
+      const response = await fetch(`/api/instructors/${instructorId}/assignments`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch assignments');
+      }
+      
+      const data = await response.json();
+      setAvailableAssignments(data.assignments || []);
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+    }
+  };
+
+  // Handle assignment selection changes
+  const handleAssignmentChange = (assignmentId: number, isChecked: boolean) => {
+    // Check if assignment already has a different rubric
+    const assignment = availableAssignments.find(a => a.id === assignmentId);
+    const isCurrentlyAssigned = assignmentIds.includes(assignmentId);
+    
+    if (assignment?.hasRubric && isChecked && !isCurrentlyAssigned) {
+      // Assignment already has a rubric and we're trying to add it to this rubric
+      // This should be prevented
+      return;
+    }
+
+    setAssignmentIds(prev => {
+      const newIds = isChecked 
+        ? [...prev, assignmentId]
+        : prev.filter(id => id !== assignmentId);
+      setIsDirty(true);
+      return newIds;
+    });
   };
 
   // Add a new criterion
@@ -220,6 +254,7 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
   const saveRubric = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       
       // Update rubric details
       const rubricResponse = await fetch(`/api/rubrics/${rubricId}`, {
@@ -229,7 +264,8 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
         },
         body: JSON.stringify({
           name: rubricName,
-          description: rubricDescription
+          description: rubricDescription,
+          assignmentIds: assignmentIds
         }),
       });
       
@@ -274,7 +310,8 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
     } catch (error) {
       console.error('Error saving rubric:', error);
       setIsLoading(false);
-      // Here we could show an error message to the user
+      setError(error instanceof Error ? error.message : 'Failed to save rubric. Please try again.');
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -422,6 +459,24 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
                 </div>
               </div>
             )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="rounded-md bg-red-50 p-4 mb-6">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-red-800">
+                      {error}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             
             {/* Rubric Details */}
             <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
@@ -445,7 +500,57 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
                       />
                     </div>
                   </div>
-                  
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Assignments
+                    </label>
+                    <div className="mt-1 space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-md p-3">
+                      {availableAssignments.length === 0 ? (
+                        <p className="text-sm text-gray-500">No assignments available</p>
+                      ) : (
+                        availableAssignments.map(assignment => {
+                          const isCurrentlyAssigned = assignmentIds.includes(assignment.id);
+                          const hasOtherRubric = assignment.hasRubric && !isCurrentlyAssigned;
+                          return (
+                            <div key={assignment.id} className={`flex items-center ${hasOtherRubric ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={assignmentIds.includes(assignment.id)}
+                                onChange={(e) => hasOtherRubric ? e.preventDefault() : handleAssignmentChange(assignment.id, e.target.checked)}
+                                disabled={hasOtherRubric}
+                                className={`h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded ${hasOtherRubric ? 'cursor-not-allowed opacity-50' : ''}`}
+                              />
+                              <span className={`ml-2 text-sm ${hasOtherRubric ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                {assignment.title} - {assignment.courseName}
+                                {hasOtherRubric && <span className="ml-2 text-red-600 font-semibold">(Already has rubric)</span>}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="mt-2 text-sm text-gray-500">
+                      Select the assignments this rubric will be used for. You can select multiple assignments.
+                    </div>
+                    {availableAssignments.some(a => a.hasRubric && !assignmentIds.includes(a.id)) && (
+                      <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
+                        <div className="flex">
+                          <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm text-amber-800 font-medium">
+                              ⚠️ Assignments that already have a different rubric cannot be selected. Each assignment can only have one rubric.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div>
                     <label htmlFor="rubric-description" className="block text-sm font-medium text-gray-700">
                       Description

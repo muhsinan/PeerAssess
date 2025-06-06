@@ -50,23 +50,43 @@ CREATE TABLE assignments (
 -- Rubric table (for storing assessment criteria)
 CREATE TABLE rubrics (
     rubric_id SERIAL PRIMARY KEY,
-    assignment_id INTEGER REFERENCES assignments(assignment_id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Rubric criteria table (stores individual criteria for each rubric)
+-- Junction table for many-to-many relationship between assignments and rubrics
+-- This allows one rubric to be used by multiple assignments
+CREATE TABLE assignment_rubrics (
+    assignment_id INTEGER REFERENCES assignments(assignment_id) ON DELETE CASCADE,
+    rubric_id INTEGER REFERENCES rubrics(rubric_id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (assignment_id, rubric_id)
+);
+
+-- Rubric criteria table (specific evaluation criteria within rubrics)
 CREATE TABLE rubric_criteria (
     criterion_id SERIAL PRIMARY KEY,
     rubric_id INTEGER REFERENCES rubrics(rubric_id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    max_points INTEGER NOT NULL CHECK (max_points > 0),
-    weight DECIMAL(5,2) DEFAULT 1.0,
+    max_points INTEGER NOT NULL,
+    weight DECIMAL(3,2) DEFAULT 1.0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Performance levels table (custom performance levels for each criterion)
+CREATE TABLE rubric_performance_levels (
+    level_id SERIAL PRIMARY KEY,
+    criterion_id INTEGER REFERENCES rubric_criteria(criterion_id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    order_position INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(criterion_id, order_position)
 );
 
 -- Submissions table (student assignment submissions)
@@ -118,6 +138,10 @@ CREATE TABLE peer_review_scores (
 -- Indexes for performance
 CREATE INDEX idx_submissions_assignment_id ON submissions(assignment_id);
 CREATE INDEX idx_submissions_student_id ON submissions(student_id);
+CREATE INDEX idx_assignment_rubrics_assignment_id ON assignment_rubrics(assignment_id);
+CREATE INDEX idx_assignment_rubrics_rubric_id ON assignment_rubrics(rubric_id);
+CREATE INDEX idx_rubric_performance_levels_criterion_id ON rubric_performance_levels(criterion_id);
+CREATE INDEX idx_rubric_performance_levels_order ON rubric_performance_levels(criterion_id, order_position);
 CREATE INDEX idx_peer_reviews_submission_id ON peer_reviews(submission_id);
 CREATE INDEX idx_peer_reviews_reviewer_id ON peer_reviews(reviewer_id);
 CREATE INDEX idx_peer_review_scores_review_id ON peer_review_scores(review_id);
@@ -177,9 +201,16 @@ INSERT INTO assignments (title, description, course_id, due_date) VALUES
 ('Project Proposal: Renewable Energy', 'Develop a detailed project proposal for renewable energy implementation', 3, CURRENT_TIMESTAMP + INTERVAL '25 days');
 
 -- Create rubrics for assignments
-INSERT INTO rubrics (assignment_id, name, description) VALUES
-(1, 'Essay Assessment Rubric', 'Criteria for evaluating climate change essays'),
-(2, 'Research Paper Rubric', 'Standards for AI ethics research papers');
+INSERT INTO rubrics (name, description) VALUES
+('Essay Assessment Rubric', 'Criteria for evaluating climate change essays'),
+('Research Paper Rubric', 'Standards for AI ethics research papers');
+
+-- Assign rubrics to assignments using the junction table
+-- One rubric can be used by multiple assignments
+INSERT INTO assignment_rubrics (assignment_id, rubric_id) VALUES
+(1, 1), -- Essay assignment uses essay rubric
+(2, 2), -- Research paper assignment uses research rubric  
+(3, 1); -- Literature review assignment also uses essay rubric (demonstrating reuse)
 
 -- Create rubric criteria for the essay rubric
 INSERT INTO rubric_criteria (rubric_id, name, description, max_points) VALUES

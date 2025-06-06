@@ -47,43 +47,28 @@ export async function GET(
         rc.criterion_id ASC
     `, [rubricId]);
 
-    // Since rubric_levels table doesn't exist, create mock levels for each criterion
-    const criteria = criteriaResult.rows.map(criterion => {
-      // Create default levels based on max points (4 levels)
-      const maxPoints = criterion.maxPoints || 10;
-      const levels = [
-        {
-          id: 1,
-          description: 'Does not meet expectations',
-          points: Math.round(maxPoints * 0.25),
-          orderPosition: 1
-        },
-        {
-          id: 2,
-          description: 'Partially meets expectations',
-          points: Math.round(maxPoints * 0.5),
-          orderPosition: 2
-        },
-        {
-          id: 3,
-          description: 'Meets expectations',
-          points: Math.round(maxPoints * 0.75),
-          orderPosition: 3
-        },
-        {
-          id: 4,
-          description: 'Exceeds expectations',
-          points: maxPoints,
-          orderPosition: 4
-        }
-      ];
+    // Get performance levels for each criterion
+    const criteria = await Promise.all(criteriaResult.rows.map(async (criterion) => {
+      const levelsResult = await pool.query(`
+        SELECT 
+          level_id as id,
+          description,
+          points as score,
+          order_position as "orderPosition"
+        FROM 
+          peer_assessment.rubric_performance_levels
+        WHERE 
+          criterion_id = $1
+        ORDER BY 
+          order_position ASC
+      `, [criterion.id]);
 
       return {
         ...criterion,
-        orderPosition: criterion.id, // Use ID as the order position
-        levels // Add mock levels
+        orderPosition: criterion.id,
+        levels: levelsResult.rows
       };
-    });
+    }));
 
     return NextResponse.json({ criteria });
   } catch (error) {
@@ -164,8 +149,54 @@ export async function POST(
     );
 
     const newCriterion = criterionResult.rows[0];
+    const criterionId = newCriterion.criterion_id;
 
-    // Since rubric_levels table doesn't exist, just return the criterion with mock levels
+    // Save performance levels if provided
+    const savedLevels = [];
+    if (levels && Array.isArray(levels) && levels.length > 0) {
+      for (let i = 0; i < levels.length; i++) {
+        const level = levels[i];
+        const levelResult = await pool.query(
+          `INSERT INTO peer_assessment.rubric_performance_levels 
+           (criterion_id, description, points, order_position) 
+           VALUES ($1, $2, $3, $4) 
+           RETURNING level_id, description, points, order_position`,
+          [criterionId, level.description || '', level.points || 0, i + 1]
+        );
+        savedLevels.push({
+          id: levelResult.rows[0].level_id,
+          description: levelResult.rows[0].description,
+          score: levelResult.rows[0].points,
+          orderPosition: levelResult.rows[0].order_position
+        });
+      }
+    } else {
+      // Create default levels if none provided
+      const defaultLevels = [
+        { description: 'Does not meet expectations', points: Math.round(maxPoints * 0.25) },
+        { description: 'Partially meets expectations', points: Math.round(maxPoints * 0.5) },
+        { description: 'Meets expectations', points: Math.round(maxPoints * 0.75) },
+        { description: 'Exceeds expectations', points: maxPoints }
+      ];
+      
+      for (let i = 0; i < defaultLevels.length; i++) {
+        const level = defaultLevels[i];
+        const levelResult = await pool.query(
+          `INSERT INTO peer_assessment.rubric_performance_levels 
+           (criterion_id, description, points, order_position) 
+           VALUES ($1, $2, $3, $4) 
+           RETURNING level_id, description, points, order_position`,
+          [criterionId, level.description, level.points, i + 1]
+        );
+        savedLevels.push({
+          id: levelResult.rows[0].level_id,
+          description: levelResult.rows[0].description,
+          score: levelResult.rows[0].points,
+          orderPosition: levelResult.rows[0].order_position
+        });
+      }
+    }
+
     return NextResponse.json({
       message: 'Criterion created successfully',
       criterion: {
@@ -177,35 +208,9 @@ export async function POST(
         orderPosition: newCriterion.criterion_id,
         createdAt: newCriterion.created_at,
         updatedAt: newCriterion.updated_at,
-        // Create mock levels
-        levels: [
-          {
-            id: 1,
-            description: 'Does not meet expectations',
-            points: Math.round(maxPoints * 0.25),
-            orderPosition: 1
-          },
-          {
-            id: 2,
-            description: 'Partially meets expectations',
-            points: Math.round(maxPoints * 0.5),
-            orderPosition: 2
-          },
-          {
-            id: 3,
-            description: 'Meets expectations',
-            points: Math.round(maxPoints * 0.75),
-            orderPosition: 3
-          },
-          {
-            id: 4,
-            description: 'Exceeds expectations',
-            points: maxPoints,
-            orderPosition: 4
-          }
-        ]
+        levels: savedLevels
       }
-    }, { status: 201 });
+    });
   } catch (error) {
     console.error('Error creating criterion:', error);
     return NextResponse.json(

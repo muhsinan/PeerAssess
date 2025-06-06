@@ -37,12 +37,13 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM peer_assessment.rubric_criteria rc WHERE rc.rubric_id = r.rubric_id) as criteria_count
       FROM 
         peer_assessment.rubrics r
-      JOIN 
-        peer_assessment.assignments a ON r.assignment_id = a.assignment_id
-      JOIN 
-        peer_assessment.courses c ON a.course_id = c.course_id
-      WHERE 
-        c.instructor_id = $1
+      WHERE r.rubric_id IN (
+        SELECT DISTINCT ar.rubric_id 
+        FROM peer_assessment.assignment_rubrics ar
+        JOIN peer_assessment.assignments a ON ar.assignment_id = a.assignment_id
+        JOIN peer_assessment.courses c ON a.course_id = c.course_id
+        WHERE c.instructor_id = $1
+      )
       ORDER BY 
         r.updated_at DESC
       LIMIT 5

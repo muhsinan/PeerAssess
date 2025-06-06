@@ -37,7 +37,26 @@ export async function GET(
         a.due_date,
         a.course_id,
         c.name as course_name,
-        c.instructor_id
+        c.instructor_id,
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', r.rubric_id,
+              'name', r.name,
+              'description', r.description
+            )
+          ) FROM peer_assessment.assignment_rubrics ar
+           JOIN peer_assessment.rubrics r ON ar.rubric_id = r.rubric_id
+           WHERE ar.assignment_id = a.assignment_id),
+          '[]'::json
+        ) as rubrics,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM peer_assessment.assignment_rubrics ar 
+            WHERE ar.assignment_id = a.assignment_id
+          ) THEN true 
+          ELSE false 
+        END as has_rubric
       FROM 
         peer_assessment.assignments a
       JOIN 
@@ -45,18 +64,24 @@ export async function GET(
       WHERE 
         c.instructor_id = $1
       ORDER BY 
-        a.due_date DESC
+        a.created_at DESC
     `, [instructorId]);
 
+    // Format the data for the frontend
+    const assignments = result.rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      dueDate: row.due_date,
+      courseId: row.course_id,
+      courseName: row.course_name,
+      instructorId: row.instructor_id,
+      rubrics: row.rubrics,
+      hasRubric: row.has_rubric
+    }));
+
     return NextResponse.json({
-      assignments: result.rows.map(assignment => ({
-        id: assignment.id,
-        title: assignment.title,
-        description: assignment.description,
-        dueDate: assignment.due_date,
-        courseId: assignment.course_id,
-        courseName: assignment.course_name
-      }))
+      assignments: assignments
     });
   } catch (error) {
     console.error('Error fetching assignments:', error);

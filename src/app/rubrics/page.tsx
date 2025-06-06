@@ -38,7 +38,7 @@ export default function RubricsPage() {
     try {
       setIsLoading(true);
       
-      const response = await fetch(`/api/dashboard/instructor/rubrics?instructorId=${userId}`);
+      const response = await fetch(`/api/rubrics?instructorId=${userId}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -130,13 +130,19 @@ export default function RubricsPage() {
                           <div className="flex items-center justify-between">
                             <div>
                               <h3 className="text-lg leading-6 font-medium text-gray-900">
-                                {rubric.title}
+                                {rubric.name}
                               </h3>
                               <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                                {rubric.criteria} criteria
+                                {rubric.criteriaCount} criteria
                               </p>
                               <p className="mt-1 text-sm text-gray-500">
-                                Last updated: {rubric.lastUpdated}
+                                Assignment: <span className="font-medium">{rubric.assignmentTitle}</span>
+                              </p>
+                              <p className="mt-1 text-sm text-gray-500">
+                                Course: <span className="font-medium">{rubric.courseName}</span>
+                              </p>
+                              <p className="mt-1 text-sm text-gray-500">
+                                Last updated: {new Date(rubric.updatedAt).toLocaleDateString()}
                               </p>
                             </div>
                             <div className="flex space-x-3">
@@ -147,10 +153,10 @@ export default function RubricsPage() {
                                 Edit Rubric
                               </Link>
                               <Link
-                                href={`/dashboard`}
+                                href={`/assignments/${rubric.assignmentId}/submissions`}
                                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                               >
-                                Back to Dashboard
+                                View Assignment
                               </Link>
                             </div>
                           </div>

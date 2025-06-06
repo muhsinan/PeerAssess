@@ -33,6 +33,19 @@ export async function GET(
           'instructor_id', c.instructor_id,
           'description', c.description
         ) as course,
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', r.rubric_id,
+              'name', r.name,
+              'description', r.description,
+              'criteriaCount', (SELECT COUNT(*) FROM peer_assessment.rubric_criteria rc WHERE rc.rubric_id = r.rubric_id)
+            )
+          ) FROM peer_assessment.assignment_rubrics ar
+           JOIN peer_assessment.rubrics r ON ar.rubric_id = r.rubric_id
+           WHERE ar.assignment_id = a.assignment_id),
+          '[]'::json
+        ) as rubrics,
         (
           SELECT COUNT(*)
           FROM peer_assessment.submissions s

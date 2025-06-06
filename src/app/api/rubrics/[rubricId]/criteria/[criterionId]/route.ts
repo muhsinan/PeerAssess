@@ -41,40 +41,26 @@ export async function GET(
 
     const criterion = criterionResult.rows[0];
     
-    // Since rubric_levels table doesn't exist, create mock levels
-    const maxPoints = criterion.maxPoints || 10;
-    const levels = [
-      {
-        id: 1,
-        description: 'Does not meet expectations',
-        points: Math.round(maxPoints * 0.25),
-        orderPosition: 1
-      },
-      {
-        id: 2,
-        description: 'Partially meets expectations',
-        points: Math.round(maxPoints * 0.5),
-        orderPosition: 2
-      },
-      {
-        id: 3,
-        description: 'Meets expectations',
-        points: Math.round(maxPoints * 0.75),
-        orderPosition: 3
-      },
-      {
-        id: 4,
-        description: 'Exceeds expectations',
-        points: maxPoints,
-        orderPosition: 4
-      }
-    ];
+    // Get performance levels for this criterion
+    const levelsResult = await pool.query(`
+      SELECT 
+        level_id as id,
+        description,
+        points as score,
+        order_position as "orderPosition"
+      FROM 
+        peer_assessment.rubric_performance_levels
+      WHERE 
+        criterion_id = $1
+      ORDER BY 
+        order_position ASC
+    `, [criterionId]);
 
     return NextResponse.json({
       criterion: {
         ...criterion,
         orderPosition: criterion.id,
-        levels
+        levels: levelsResult.rows
       }
     });
   } catch (error) {
@@ -102,7 +88,7 @@ export async function PUT(
     }
 
     // Parse request body
-    const { title, description, maxPoints } = await request.json();
+    const { title, description, maxPoints, levels } = await request.json();
     
     // Validate input
     if (!title || !title.trim()) {
@@ -140,7 +126,27 @@ export async function PUT(
       [title.trim(), description?.trim() || null, maxPoints, criterionId]
     );
 
-    // Get updated criterion
+    // Update performance levels if provided
+    if (levels && Array.isArray(levels)) {
+      // Delete existing levels
+      await pool.query(
+        'DELETE FROM peer_assessment.rubric_performance_levels WHERE criterion_id = $1',
+        [criterionId]
+      );
+
+      // Insert new levels
+      for (let i = 0; i < levels.length; i++) {
+        const level = levels[i];
+        await pool.query(
+          `INSERT INTO peer_assessment.rubric_performance_levels 
+           (criterion_id, description, points, order_position) 
+           VALUES ($1, $2, $3, $4)`,
+          [criterionId, level.description || '', level.score || 0, i + 1]
+        );
+      }
+    }
+
+    // Get updated criterion with performance levels
     const updatedCriterionResult = await pool.query(`
       SELECT 
         criterion_id AS id,
@@ -158,40 +164,27 @@ export async function PUT(
 
     const updatedCriterion = updatedCriterionResult.rows[0];
     
-    // Create mock levels for the updated criterion
-    const levels = [
-      {
-        id: 1,
-        description: 'Does not meet expectations',
-        points: Math.round(maxPoints * 0.25),
-        orderPosition: 1
-      },
-      {
-        id: 2,
-        description: 'Partially meets expectations',
-        points: Math.round(maxPoints * 0.5),
-        orderPosition: 2
-      },
-      {
-        id: 3,
-        description: 'Meets expectations',
-        points: Math.round(maxPoints * 0.75),
-        orderPosition: 3
-      },
-      {
-        id: 4,
-        description: 'Exceeds expectations',
-        points: maxPoints,
-        orderPosition: 4
-      }
-    ];
+    // Get updated performance levels
+    const levelsResult = await pool.query(`
+      SELECT 
+        level_id as id,
+        description,
+        points as score,
+        order_position as "orderPosition"
+      FROM 
+        peer_assessment.rubric_performance_levels
+      WHERE 
+        criterion_id = $1
+      ORDER BY 
+        order_position ASC
+    `, [criterionId]);
 
     return NextResponse.json({
       message: 'Criterion updated successfully',
       criterion: {
         ...updatedCriterion,
         orderPosition: updatedCriterion.id,
-        levels
+        levels: levelsResult.rows
       }
     });
   } catch (error) {

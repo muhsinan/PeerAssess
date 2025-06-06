@@ -16,61 +16,89 @@ export async function GET(
       );
     }
 
-    const result = await pool.query(`
+    // Get rubric basic info and associated assignments
+    const rubricResult = await pool.query(`
       SELECT 
         r.rubric_id as id,
         r.name,
         r.description,
         r.created_at,
         r.updated_at,
-        a.assignment_id,
-        a.title as assignment_title,
-        c.course_id,
-        c.name as course_name,
-        u.user_id as instructor_id,
-        u.name as instructor_name,
-        (SELECT COUNT(*) FROM peer_assessment.rubric_criteria rc WHERE rc.rubric_id = r.rubric_id) as criteria_count
+        COALESCE(
+          json_agg(
+            CASE 
+              WHEN a.assignment_id IS NOT NULL THEN
+                json_build_object(
+                  'id', a.assignment_id,
+                  'title', a.title,
+                  'courseId', a.course_id,
+                  'courseName', c.name
+                )
+            END
+          ) FILTER (WHERE a.assignment_id IS NOT NULL), 
+          '[]'::json
+        ) as assignments
       FROM 
         peer_assessment.rubrics r
-      JOIN 
-        peer_assessment.assignments a ON r.assignment_id = a.assignment_id
-      JOIN 
-        peer_assessment.courses c ON a.course_id = c.course_id
-      JOIN 
-        peer_assessment.users u ON c.instructor_id = u.user_id
-      WHERE 
-        r.rubric_id = $1
+      LEFT JOIN peer_assessment.assignment_rubrics ar ON r.rubric_id = ar.rubric_id
+      LEFT JOIN peer_assessment.assignments a ON ar.assignment_id = a.assignment_id
+      LEFT JOIN peer_assessment.courses c ON a.course_id = c.course_id
+      WHERE r.rubric_id = $1
+      GROUP BY r.rubric_id, r.name, r.description, r.created_at, r.updated_at
     `, [rubricId]);
-    
-    if (result.rows.length === 0) {
+
+    if (rubricResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Rubric not found' },
         { status: 404 }
       );
     }
 
-    const rubric = result.rows[0];
+    // Get rubric criteria with performance levels
+    const criteriaResult = await pool.query(`
+      SELECT 
+        criterion_id as id,
+        name,
+        description,
+        max_points,
+        weight
+      FROM peer_assessment.rubric_criteria
+      WHERE rubric_id = $1
+      ORDER BY criterion_id
+    `, [rubricId]);
+
+    // Get performance levels for each criterion
+    const criteriaWithLevels = await Promise.all(criteriaResult.rows.map(async (criterion) => {
+      const levelsResult = await pool.query(`
+        SELECT 
+          level_id as id,
+          description,
+          points as score,
+          order_position as "orderPosition"
+        FROM 
+          peer_assessment.rubric_performance_levels
+        WHERE 
+          criterion_id = $1
+        ORDER BY 
+          order_position ASC
+      `, [criterion.id]);
+
+      return {
+        ...criterion,
+        levels: levelsResult.rows
+      };
+    }));
+
+    const rubric = rubricResult.rows[0];
     
     return NextResponse.json({
-      rubric: {
-        id: rubric.id,
-        name: rubric.name,
-        description: rubric.description,
-        createdAt: rubric.created_at,
-        updatedAt: rubric.updated_at,
-        assignmentId: rubric.assignment_id,
-        assignmentTitle: rubric.assignment_title,
-        courseId: rubric.course_id,
-        courseName: rubric.course_name,
-        instructorId: rubric.instructor_id,
-        instructorName: rubric.instructor_name,
-        criteriaCount: parseInt(rubric.criteria_count || '0')
-      }
+      ...rubric,
+      criteria: criteriaWithLevels
     });
   } catch (error) {
-    console.error('Error fetching rubric details:', error);
+    console.error('Error fetching rubric:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch rubric details' },
+      { error: 'Failed to fetch rubric' },
       { status: 500 }
     );
   }
@@ -83,7 +111,9 @@ export async function PUT(
 ) {
   try {
     const { rubricId } = await params;
-    
+    const body = await request.json();
+    const { name, description, assignmentIds = [] } = body;
+
     if (!rubricId || isNaN(parseInt(rubricId))) {
       return NextResponse.json(
         { error: 'Valid rubric ID is required' },
@@ -91,11 +121,7 @@ export async function PUT(
       );
     }
 
-    // Parse request body
-    const { name, description } = await request.json();
-    
-    // Validate input
-    if (!name || !name.trim()) {
+    if (!name || typeof name !== 'string') {
       return NextResponse.json(
         { error: 'Rubric name is required' },
         { status: 400 }
@@ -103,69 +129,61 @@ export async function PUT(
     }
 
     // Check if rubric exists
-    const checkResult = await pool.query(
+    const rubricCheck = await pool.query(
       'SELECT rubric_id FROM peer_assessment.rubrics WHERE rubric_id = $1',
       [rubricId]
     );
-    
-    if (checkResult.rows.length === 0) {
+
+    if (rubricCheck.rows.length === 0) {
       return NextResponse.json(
         { error: 'Rubric not found' },
         { status: 404 }
       );
     }
 
-    // Update rubric in database
+    // Update rubric basic info
     await pool.query(
-      `UPDATE peer_assessment.rubrics 
-       SET name = $1, description = $2, updated_at = NOW() 
-       WHERE rubric_id = $3`,
-      [name.trim(), description?.trim() || null, rubricId]
+      'UPDATE peer_assessment.rubrics SET name = $1, description = $2, updated_at = NOW() WHERE rubric_id = $3',
+      [name, description || null, rubricId]
     );
 
-    // Get updated rubric
-    const result = await pool.query(`
-      SELECT 
-        r.rubric_id as id,
-        r.name,
-        r.description,
-        r.created_at,
-        r.updated_at,
-        a.assignment_id,
-        a.title as assignment_title,
-        c.course_id,
-        c.name as course_name,
-        u.user_id as instructor_id,
-        u.name as instructor_name
-      FROM 
-        peer_assessment.rubrics r
-      JOIN 
-        peer_assessment.assignments a ON r.assignment_id = a.assignment_id
-      JOIN 
-        peer_assessment.courses c ON a.course_id = c.course_id
-      JOIN 
-        peer_assessment.users u ON c.instructor_id = u.user_id
-      WHERE 
-        r.rubric_id = $1
-    `, [rubricId]);
+    // Update assignment associations
+    // First, remove all existing associations
+    await pool.query(
+      'DELETE FROM peer_assessment.assignment_rubrics WHERE rubric_id = $1',
+      [rubricId]
+    );
 
-    const rubric = result.rows[0];
-    
-    return NextResponse.json({
-      message: 'Rubric updated successfully',
-      rubric: {
-        id: rubric.id,
-        name: rubric.name,
-        description: rubric.description,
-        createdAt: rubric.created_at,
-        updatedAt: rubric.updated_at,
-        assignmentId: rubric.assignment_id,
-        assignmentTitle: rubric.assignment_title,
-        courseId: rubric.course_id,
-        courseName: rubric.course_name,
-        instructorId: rubric.instructor_id,
-        instructorName: rubric.instructor_name
+    // Validate new assignment assignments - check if any assignments already have rubrics (excluding current rubric)
+    if (assignmentIds && assignmentIds.length > 0) {
+      const existingAssignments = await pool.query(
+        'SELECT assignment_id FROM peer_assessment.assignment_rubrics WHERE assignment_id = ANY($1) AND rubric_id != $2',
+        [assignmentIds, rubricId]
+      );
+      
+      if (existingAssignments.rows.length > 0) {
+        const conflictingIds = existingAssignments.rows.map(row => row.assignment_id);
+        return NextResponse.json(
+          { error: `Assignments with IDs ${conflictingIds.join(', ')} already have rubrics assigned. Each assignment can only have one rubric.` },
+          { status: 400 }
+        );
       }
+    }
+
+    // Then add new associations
+    if (assignmentIds.length > 0) {
+      const insertPromises = assignmentIds.map((assignmentId: number) =>
+        pool.query(
+          'INSERT INTO peer_assessment.assignment_rubrics (assignment_id, rubric_id) VALUES ($1, $2)',
+          [assignmentId, rubricId]
+        )
+      );
+      
+      await Promise.all(insertPromises);
+    }
+
+    return NextResponse.json({
+      message: 'Rubric updated successfully'
     });
   } catch (error) {
     console.error('Error updating rubric:', error);
@@ -192,33 +210,19 @@ export async function DELETE(
     }
 
     // Check if rubric exists
-    const checkResult = await pool.query(
+    const rubricCheck = await pool.query(
       'SELECT rubric_id FROM peer_assessment.rubrics WHERE rubric_id = $1',
       [rubricId]
     );
-    
-    if (checkResult.rows.length === 0) {
+
+    if (rubricCheck.rows.length === 0) {
       return NextResponse.json(
         { error: 'Rubric not found' },
         { status: 404 }
       );
     }
 
-    // Check if the rubric has criteria
-    const criteriaResult = await pool.query(
-      'SELECT COUNT(*) FROM peer_assessment.rubric_criteria WHERE rubric_id = $1',
-      [rubricId]
-    );
-    
-    // Delete the criteria first if they exist
-    if (parseInt(criteriaResult.rows[0].count) > 0) {
-      await pool.query(
-        'DELETE FROM peer_assessment.rubric_criteria WHERE rubric_id = $1',
-        [rubricId]
-      );
-    }
-
-    // Delete the rubric
+    // Delete rubric (cascading will handle criteria and assignment associations)
     await pool.query(
       'DELETE FROM peer_assessment.rubrics WHERE rubric_id = $1',
       [rubricId]

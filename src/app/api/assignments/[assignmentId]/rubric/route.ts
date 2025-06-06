@@ -15,7 +15,7 @@ export async function GET(
       );
     }
 
-    // First, get the rubric ID for this assignment
+    // First, get the rubrics for this assignment using the junction table
     const rubricResult = await pool.query(`
       SELECT 
         r.rubric_id as id,
@@ -23,8 +23,10 @@ export async function GET(
         r.description
       FROM 
         peer_assessment.rubrics r
+      JOIN peer_assessment.assignment_rubrics ar ON r.rubric_id = ar.rubric_id
       WHERE 
-        r.assignment_id = $1
+        ar.assignment_id = $1
+      LIMIT 1
     `, [assignmentId]);
     
     if (rubricResult.rows.length === 0) {
@@ -52,41 +54,27 @@ export async function GET(
         rc.criterion_id
     `, [rubric.id]);
     
-    // Add performance levels to each criterion (mock levels for now since they're not stored in DB)
-    const criteria = criteriaResult.rows.map(criterion => {
-      const maxPoints = criterion.maxPoints || 10;
-      const levels = [
-        {
-          id: 1,
-          description: 'Does not meet expectations',
-          points: Math.round(maxPoints * 0.25),
-          orderPosition: 1
-        },
-        {
-          id: 2,
-          description: 'Partially meets expectations',
-          points: Math.round(maxPoints * 0.5),
-          orderPosition: 2
-        },
-        {
-          id: 3,
-          description: 'Meets expectations',
-          points: Math.round(maxPoints * 0.75),
-          orderPosition: 3
-        },
-        {
-          id: 4,
-          description: 'Exceeds expectations',
-          points: maxPoints,
-          orderPosition: 4
-        }
-      ];
+    // Get performance levels for each criterion
+    const criteria = await Promise.all(criteriaResult.rows.map(async (criterion) => {
+      const levelsResult = await pool.query(`
+        SELECT 
+          level_id as id,
+          description,
+          points,
+          order_position as "orderPosition"
+        FROM 
+          peer_assessment.rubric_performance_levels
+        WHERE 
+          criterion_id = $1
+        ORDER BY 
+          order_position ASC
+      `, [criterion.id]);
 
       return {
         ...criterion,
-        levels
+        levels: levelsResult.rows
       };
-    });
+    }));
     
     return NextResponse.json({
       rubric: {

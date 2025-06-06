@@ -15,7 +15,7 @@ export default function CreateRubric() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    assignmentId: ''
+    assignmentIds: [] as number[]
   });
   
   const [criteria, setCriteria] = useState<Array<{
@@ -48,6 +48,7 @@ export default function CreateRubric() {
     title: string;
     courseId: number;
     courseName: string;
+    hasRubric: boolean;
   }>>([]);
 
   // Check if user is authorized (must be an instructor)
@@ -92,6 +93,23 @@ export default function CreateRubric() {
       ...formData,
       [name]: value
     });
+  };
+
+  // Handle assignment selection changes
+  const handleAssignmentChange = (assignmentId: number, isChecked: boolean) => {
+    // Check if assignment already has a rubric
+    const assignment = availableAssignments.find(a => a.id === assignmentId);
+    if (assignment?.hasRubric && isChecked) {
+      setError('This assignment already has a rubric assigned. Each assignment can only have one rubric.');
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      assignmentIds: isChecked 
+        ? [...prev.assignmentIds, assignmentId]
+        : prev.assignmentIds.filter(id => id !== assignmentId)
+    }));
   };
 
   // Handle changes to criteria
@@ -199,11 +217,8 @@ export default function CreateRubric() {
       return;
     }
     
-    // Validate assignment selection
-    if (!formData.assignmentId) {
-      setError('Please select an assignment for this rubric');
-      return;
-    }
+    // Assignment selection is optional - rubrics can be created without being assigned to assignments
+    // Multiple assignments can be selected and one rubric can be used by multiple assignments
     
     // Validate criteria
     const invalidCriteriaIndex = criteria.findIndex(c => !c.name.trim());
@@ -226,7 +241,7 @@ export default function CreateRubric() {
         body: JSON.stringify({
           name: formData.name,
           description: formData.description,
-          assignmentId: parseInt(formData.assignmentId)
+          assignmentIds: formData.assignmentIds
         })
       });
       
@@ -373,31 +388,54 @@ export default function CreateRubric() {
                       </div>
                     </div>
 
-                    {/* Assignment (Optional) */}
+                    {/* Assignments (Optional) */}
                     <div className="sm:col-span-4">
-                      <label htmlFor="assignmentId" className="block text-sm font-medium text-gray-700">
-                        Assignment *
+                      <label className="block text-sm font-medium text-gray-700">
+                        Assignments (Optional)
                       </label>
-                      <div className="mt-1">
-                        <select
-                          id="assignmentId"
-                          name="assignmentId"
-                          value={formData.assignmentId}
-                          onChange={handleInputChange}
-                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          required
-                        >
-                          <option value="">Select an assignment</option>
-                          {availableAssignments.map(assignment => (
-                            <option key={assignment.id} value={assignment.id}>
-                              {assignment.title} - {assignment.courseName}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="mt-1 space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-md p-3">
+                        {availableAssignments.length === 0 ? (
+                          <p className="text-sm text-gray-500">No assignments available</p>
+                        ) : (
+                          availableAssignments.map(assignment => {
+                            const hasRubric = assignment.hasRubric;
+                            return (
+                              <div key={assignment.id} className={`flex items-center ${hasRubric ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={formData.assignmentIds.includes(assignment.id)}
+                                  onChange={(e) => hasRubric ? e.preventDefault() : handleAssignmentChange(assignment.id, e.target.checked)}
+                                  disabled={hasRubric}
+                                  className={`h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded ${hasRubric ? 'cursor-not-allowed opacity-50' : ''}`}
+                                />
+                                <span className={`ml-2 text-sm ${hasRubric ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                  {assignment.title} - {assignment.courseName}
+                                  {hasRubric && <span className="ml-2 text-red-600 font-semibold">(Already has rubric)</span>}
+                                </span>
+                              </div>
+                            );
+                          })
+                        )}
                       </div>
-                      <p className="mt-2 text-sm text-gray-500">
-                        Please select the assignment this rubric will be used for
-                      </p>
+                      <div className="mt-2 text-sm text-gray-500">
+                        Select the assignments this rubric will be used for. You can select multiple assignments or none.
+                      </div>
+                      {availableAssignments.some(a => a.hasRubric) && (
+                        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
+                          <div className="flex">
+                            <div className="flex-shrink-0">
+                              <svg className="h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div className="ml-3">
+                              <p className="text-sm text-amber-800 font-medium">
+                                ⚠️ Assignments that already have a rubric cannot be selected. Each assignment can only have one rubric.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Description */}
