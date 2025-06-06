@@ -3,10 +3,11 @@ import pool from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { submissionId: string } }
+  { params }: { params: Promise<{ submissionId: string }> }
 ) {
   try {
-    const submissionId = parseInt(params.submissionId);
+    const { submissionId: submissionIdParam } = await params;
+    const submissionId = parseInt(submissionIdParam);
 
     if (isNaN(submissionId)) {
       return NextResponse.json(
