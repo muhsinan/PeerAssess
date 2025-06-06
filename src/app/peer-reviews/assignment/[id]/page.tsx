@@ -63,8 +63,58 @@ export default function AssignmentPeerReviewPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingAssignments, setPendingAssignments] = useState<{[studentId: number]: number[]}>({});
+
+  // Helper function to save pending assignments to localStorage
+  const savePendingAssignments = (assignments: {[studentId: number]: number[]}) => {
+    localStorage.setItem(`pendingAssignments-${assignmentId}`, JSON.stringify(assignments));
+    setPendingAssignments(assignments);
+  };
+
+  // Clean up pending assignments when they become actual assignments
+  useEffect(() => {
+    const convertPendingToActual = async () => {
+      if (Object.keys(pendingAssignments).length > 0 && submissions.length > 0) {
+        const updatedPendingAssignments = { ...pendingAssignments };
+        let hasChanges = false;
+
+        // Convert pending assignments to actual peer reviews for students who now have submissions
+        for (const submission of submissions) {
+          if (updatedPendingAssignments[submission.studentId]) {
+            const reviewerIds = updatedPendingAssignments[submission.studentId];
+            
+            // Create actual peer reviews for each pending reviewer
+            for (const reviewerId of reviewerIds) {
+              try {
+                // Check if this peer review already exists to avoid duplicates
+                const existingReview = peerReviews.find(pr => 
+                  pr.submissionId === submission.id && pr.reviewerId === reviewerId
+                );
+                
+                if (!existingReview) {
+                  await assignPeerReview(submission.id, reviewerId);
+                }
+              } catch (error) {
+                console.error('Failed to convert pending assignment to peer review:', error);
+              }
+            }
+            
+            // Remove the pending assignments after converting them
+            delete updatedPendingAssignments[submission.studentId];
+            hasChanges = true;
+          }
+        }
+
+        if (hasChanges) {
+          savePendingAssignments(updatedPendingAssignments);
+          setSuccessMessage('Pending assignments have been converted to active peer reviews!');
+        }
+      }
+    };
+
+    convertPendingToActual();
+  }, [submissions, pendingAssignments, assignmentId, peerReviews]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -74,6 +124,12 @@ export default function AssignmentPeerReviewPage() {
         if (userRole !== 'instructor') {
           router.push('/dashboard');
           return;
+        }
+
+        // Load pending assignments from localStorage
+        const savedPendingAssignments = localStorage.getItem(`pendingAssignments-${assignmentId}`);
+        if (savedPendingAssignments) {
+          setPendingAssignments(JSON.parse(savedPendingAssignments));
         }
 
         // Fetch assignment details
@@ -102,7 +158,6 @@ export default function AssignmentPeerReviewPage() {
 
         // Fetch all students enrolled in the course
         const courseId = assignmentData.courseId;
-        setDebugInfo(`Fetching students for course ID: ${courseId}`);
         
         if (!courseId) {
           throw new Error('Course ID not found in assignment data');
@@ -110,28 +165,19 @@ export default function AssignmentPeerReviewPage() {
         
         try {
           const studentsRes = await fetch(`/api/courses/${courseId}/students`);
-          const responseText = await studentsRes.text(); // Get raw response for debugging
           
           if (!studentsRes.ok) {
-            setDebugInfo(`Failed to fetch students. Status: ${studentsRes.status}. Response: ${responseText}`);
             throw new Error(`Failed to fetch students: ${studentsRes.status} ${studentsRes.statusText}`);
           }
           
-          try {
-            const studentsData = JSON.parse(responseText);
-            if (!studentsData.students || !Array.isArray(studentsData.students)) {
-              setDebugInfo(`Invalid students data format. Response: ${responseText}`);
-              throw new Error('Invalid students data format');
-            }
-            setStudents(studentsData.students || []);
-          } catch (parseError) {
-            setDebugInfo(`Error parsing students JSON: ${parseError}. Raw response: ${responseText}`);
-            throw new Error('Error parsing students data');
+          const studentsData = await studentsRes.json();
+          if (!studentsData.students || !Array.isArray(studentsData.students)) {
+            throw new Error('Invalid students data format');
           }
+          setStudents(studentsData.students || []);
         } catch (studentsError: any) {
           // Continue with the page even if students fetch fails
           console.error('Error fetching students:', studentsError);
-          setDebugInfo(`Students fetch error: ${studentsError.message}`);
           // We'll still set the loading to false and continue with empty students array
         }
 
@@ -158,7 +204,7 @@ export default function AssignmentPeerReviewPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          reviewsPerStudent: 2, // Each student reviews 2 assignments
+          reviewsPerStudent: 1, // Each student gets 1 reviewer assigned
         }),
       });
       
@@ -169,7 +215,20 @@ export default function AssignmentPeerReviewPage() {
       
       const data = await response.json();
       setPeerReviews(data.peerReviews || []);
-      setSuccessMessage('Peer reviews have been randomly assigned successfully');
+      
+      // Handle pending assignments for students who haven't submitted yet
+      if (data.pendingAssignments && data.pendingAssignments.length > 0) {
+        const pendingMap: {[studentId: number]: number[]} = {};
+        data.pendingAssignments.forEach((assignment: any) => {
+          if (!pendingMap[assignment.studentId]) {
+            pendingMap[assignment.studentId] = [];
+          }
+          pendingMap[assignment.studentId].push(assignment.reviewerId);
+        });
+        savePendingAssignments(pendingMap);
+      }
+      
+      setSuccessMessage(`Successfully assigned 1 reviewer to each student. ${data.stats?.peerReviewsCreated || 0} immediate assignments and ${data.stats?.pendingAssignmentsCreated || 0} pending assignments created.`);
       
       // Refresh submissions data to update review counts
       const submissionsRes = await fetch(`/api/assignments/${assignmentId}/submissions`);
@@ -270,9 +329,6 @@ export default function AssignmentPeerReviewPage() {
               </div>
               <div className="ml-3">
                 <p className="text-sm text-red-700">{error}</p>
-                {debugInfo && (
-                  <p className="text-xs text-red-500 mt-1">Debug info: {debugInfo}</p>
-                )}
               </div>
             </div>
           </div>
@@ -301,9 +357,6 @@ export default function AssignmentPeerReviewPage() {
             <p className="mt-1 text-gray-500">
               Course: {assignment?.courseName} | Due: {new Date(assignment?.dueDate).toLocaleDateString()}
             </p>
-            {debugInfo && (
-              <p className="text-xs text-gray-500 mt-1">Debug info: {debugInfo}</p>
-            )}
           </div>
           <div className="mt-4 flex md:mt-0 md:ml-4">
             <button
@@ -324,7 +377,31 @@ export default function AssignmentPeerReviewPage() {
             </button>
           </div>
         </div>
-        
+
+        {/* Information Section */}
+        <div className="mt-6 bg-blue-50 border-l-4 border-blue-400 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">Peer Review Assignment</h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p>
+                  You can now assign peer reviews to all enrolled students, even if they haven't submitted their work yet. 
+                  This allows for more flexible assignment scheduling and ensures all students can participate in the peer review process.
+                </p>
+                <p className="mt-2">
+                  <strong>How it works:</strong> Use "Auto-Assign" to automatically distribute submissions among all enrolled students, 
+                  or manually assign specific students as reviewers using the dropdown in each submission row.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Success Message */}
         {successMessage && (
           <div className="mt-4 bg-green-50 border-l-4 border-green-400 p-4">
@@ -354,12 +431,12 @@ export default function AssignmentPeerReviewPage() {
           </div>
         )}
 
-        {/* Submissions Table */}
+        {/* Student Peer Review Assignments - All Enrolled Students */}
         <div className="mt-8 bg-white shadow overflow-hidden sm:rounded-lg">
           <div className="px-4 py-5 sm:px-6 bg-gray-50">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">Submissions and Assigned Reviews</h3>
+            <h3 className="text-lg leading-6 font-medium text-gray-900">All Students - Peer Review Assignments</h3>
             <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              {submissions.length} submissions received | {peerReviews.length} peer reviews assigned
+              Assign peer reviewers to all enrolled students, including those who haven't submitted yet
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -367,85 +444,145 @@ export default function AssignmentPeerReviewPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submission</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Reviewers</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submission Status</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submission Date</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Will Receive Reviews From</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assign Reviewer</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {submissions.map((submission) => {
-                  const assignedReviews = getReviewsForSubmission(submission.id);
+                {students.map((student) => {
+                  const studentSubmission = submissions.find(sub => sub.studentId === student.id);
+                  const reviewsToComplete = getReviewsByStudent(student.id);
+                  const reviewsToReceive = peerReviews.filter(review => 
+                    submissions.some(sub => sub.studentId === student.id && sub.id === review.submissionId)
+                  );
+                  
                   return (
-                    <tr key={submission.id}>
+                    <tr key={student.id} className={!studentSubmission ? "bg-blue-50" : ""}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div>
-                            <div className="text-sm font-medium text-black">{submission.studentName}</div>
-                            <div className="text-sm text-gray-500">{submission.studentEmail}</div>
+                            <div className="text-sm font-medium text-black">{student.name}</div>
+                            <div className="text-sm text-gray-500">{student.email}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-black">{submission.title}</div>
+                        {studentSubmission ? (
+                          <div>
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                              Submitted
+                            </span>
+                            <div className="text-xs text-gray-500 mt-1">{studentSubmission.title}</div>
+                          </div>
+                        ) : (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                            Not Submitted
+                          </span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(submission.submissionDate).toLocaleString()}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {studentSubmission ? (
+                          <div className="text-sm text-gray-900">
+                            {new Date(studentSubmission.submissionDate).toLocaleDateString()}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
-                        {assignedReviews.length > 0 ? (
-                          <ul className="text-sm text-gray-500">
-                            {assignedReviews.map((review) => (
-                              <li key={review.id} className="flex justify-between items-center mb-2">
-                                <span>{review.reviewerName}</span>
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                  ${review.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                                    review.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' : 
-                                    'bg-gray-100 text-gray-800'}`}
-                                >
-                                  {review.status === 'completed' ? 'Completed' : 
-                                   review.status === 'in_progress' ? 'In Progress' : 'Assigned'}
-                                </span>
+                        {reviewsToReceive.length > 0 || (pendingAssignments[student.id] && pendingAssignments[student.id].length > 0) ? (
+                          <div className="text-sm text-gray-500">
+                            {/* Show actual peer reviews */}
+                            {reviewsToReceive.map((review) => (
+                              <div key={review.id} className="mb-2 flex items-center justify-between bg-gray-50 p-2 rounded-md">
+                                <div>
+                                  <span className="font-medium">{review.reviewerName}</span>
+                                  <span className={`ml-2 px-2 inline-flex text-xs leading-4 font-semibold rounded-full 
+                                    ${review.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                                      review.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' : 
+                                      'bg-gray-100 text-gray-800'}`}
+                                  >
+                                    {review.status === 'completed' ? 'Done' : 
+                                     review.status === 'in_progress' ? 'In Progress' : 'Assigned'}
+                                  </span>
+                                </div>
                                 <button
                                   onClick={() => deletePeerReview(review.id)}
-                                  className="text-red-600 hover:text-red-900 ml-2"
+                                  className="ml-2 inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                                 >
                                   Remove
                                 </button>
-                              </li>
+                              </div>
                             ))}
-                          </ul>
+                            {/* Show pending assignments */}
+                            {pendingAssignments[student.id] && pendingAssignments[student.id].map((reviewerId) => {
+                              const reviewer = students.find(s => s.id === reviewerId);
+                              return (
+                                <div key={`pending-${reviewerId}`} className="mb-2 flex items-center justify-between bg-blue-50 p-2 rounded-md">
+                                  <div>
+                                    <span className="font-medium">{reviewer?.name || 'Unknown'}</span>
+                                    <span className="ml-2 px-2 inline-flex text-xs leading-4 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                      Pending
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const newAssignments = {
+                                        ...pendingAssignments,
+                                        [student.id]: pendingAssignments[student.id].filter(id => id !== reviewerId)
+                                      };
+                                      savePendingAssignments(newAssignments);
+                                    }}
+                                    className="ml-2 inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
                         ) : (
                           <span className="text-sm text-gray-500">No reviewers assigned</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {students.length > 0 ? (
-                          <select 
-                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md"
-                            onChange={(e) => {
-                              const reviewerId = parseInt(e.target.value);
-                              if (reviewerId) {
-                                assignPeerReview(submission.id, reviewerId);
-                                e.target.value = ''; // Reset select after assigning
+                        <select 
+                          className="block w-full text-xs pl-2 pr-8 py-1 border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 rounded-md"
+                          onChange={(e) => {
+                            const reviewerId = parseInt(e.target.value);
+                            if (reviewerId) {
+                              if (studentSubmission) {
+                                // Student has submitted - create normal peer review
+                                assignPeerReview(studentSubmission.id, reviewerId);
+                              } else {
+                                // Student hasn't submitted yet - store as pending assignment
+                                const reviewerName = students.find(s => s.id === reviewerId)?.name;
+                                const newAssignments = {
+                                  ...pendingAssignments,
+                                  [student.id]: [...(pendingAssignments[student.id] || []), reviewerId]
+                                };
+                                savePendingAssignments(newAssignments);
+                                setSuccessMessage(`Pending assignment: ${reviewerName} will review ${student.name}'s work once they submit.`);
                               }
-                            }}
-                            defaultValue=""
-                          >
-                            <option value="">Assign Reviewer...</option>
-                            {students
-                              .filter(student => student.id !== submission.studentId) // Can't review own submission
-                              .filter(student => !assignedReviews.some(r => r.reviewerId === student.id)) // Not already assigned
-                              .map(student => (
-                                <option key={student.id} value={student.id}>{student.name}</option>
-                              ))
+                              e.target.value = '';
                             }
-                          </select>
-                        ) : (
-                          <div className="text-sm text-yellow-600">
-                            Unable to load students. Please refresh and try again.
-                          </div>
-                        )}
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="">Assign reviewer...</option>
+                          {students
+                            .filter(s => s.id !== student.id) // Can't review own submission
+                            .filter(s => !reviewsToReceive.some(r => r.reviewerId === s.id)) // Not already assigned in actual reviews
+                            .filter(s => !(pendingAssignments[student.id] && pendingAssignments[student.id].includes(s.id))) // Not already assigned as pending
+                            .map(reviewer => (
+                              <option key={reviewer.id} value={reviewer.id}>
+                                {reviewer.name}
+                              </option>
+                            ))
+                          }
+                        </select>
                       </td>
                     </tr>
                   );
