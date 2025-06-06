@@ -133,16 +133,30 @@ export default function RubricsPage() {
                                 {rubric.name}
                               </h3>
                               <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                                {rubric.criteriaCount} criteria
+                                {rubric.criteria_count} criteria
                               </p>
+                              {rubric.assignments && rubric.assignments.length > 0 ? (
+                                <div className="mt-1">
+                                  <p className="text-sm text-gray-500">
+                                    Assignments: {' '}
+                                    <span className="font-medium">
+                                      {rubric.assignments.map((assignment: any) => assignment.title).join(', ')}
+                                    </span>
+                                  </p>
+                                  <p className="text-sm text-gray-500">
+                                    Courses: {' '}
+                                    <span className="font-medium">
+                                      {[...new Set(rubric.assignments.map((assignment: any) => assignment.courseName))].join(', ')}
+                                    </span>
+                                  </p>
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-sm text-gray-500">
+                                  <span className="text-gray-400 italic">Not assigned to any assignments</span>
+                                </p>
+                              )}
                               <p className="mt-1 text-sm text-gray-500">
-                                Assignment: <span className="font-medium">{rubric.assignmentTitle}</span>
-                              </p>
-                              <p className="mt-1 text-sm text-gray-500">
-                                Course: <span className="font-medium">{rubric.courseName}</span>
-                              </p>
-                              <p className="mt-1 text-sm text-gray-500">
-                                Last updated: {new Date(rubric.updatedAt).toLocaleDateString()}
+                                Last updated: {rubric.updated_at ? new Date(rubric.updated_at).toLocaleDateString() : 'Unknown'}
                               </p>
                             </div>
                             <div className="flex space-x-3">
@@ -152,12 +166,14 @@ export default function RubricsPage() {
                               >
                                 Edit Rubric
                               </Link>
-                              <Link
-                                href={`/assignments/${rubric.assignmentId}/submissions`}
-                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                              >
-                                View Assignment
-                              </Link>
+                              {rubric.assignments && rubric.assignments.length > 0 && (
+                                <Link
+                                  href={`/assignments/${rubric.assignments[0].id}/submissions`}
+                                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                                >
+                                  View Assignment
+                                </Link>
+                              )}
                             </div>
                           </div>
                         </div>

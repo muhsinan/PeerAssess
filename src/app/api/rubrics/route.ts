@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
 // GET: List all rubrics or filter by instructor ID
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const result = await pool.query(`
+    const { searchParams } = new URL(request.url);
+    const instructorId = searchParams.get('instructorId');
+
+    let query = `
       SELECT 
         r.rubric_id as id,
         r.name,
@@ -31,9 +34,27 @@ export async function GET() {
       LEFT JOIN peer_assessment.assignment_rubrics ar ON r.rubric_id = ar.rubric_id
       LEFT JOIN peer_assessment.assignments a ON ar.assignment_id = a.assignment_id  
       LEFT JOIN peer_assessment.courses c ON a.course_id = c.course_id
+    `;
+
+    const params = [];
+    
+    // Add instructor filter if provided
+    if (instructorId) {
+      query += ` WHERE EXISTS (
+        SELECT 1 FROM peer_assessment.assignment_rubrics ar2
+        JOIN peer_assessment.assignments a2 ON ar2.assignment_id = a2.assignment_id
+        JOIN peer_assessment.courses c2 ON a2.course_id = c2.course_id
+        WHERE ar2.rubric_id = r.rubric_id AND c2.instructor_id = $1
+      )`;
+      params.push(instructorId);
+    }
+
+    query += `
       GROUP BY r.rubric_id, r.name, r.description, r.created_at, r.updated_at
       ORDER BY r.updated_at DESC
-    `);
+    `;
+
+    const result = await pool.query(query, params);
 
     return NextResponse.json({
       rubrics: result.rows
