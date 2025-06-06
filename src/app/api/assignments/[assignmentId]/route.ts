@@ -23,6 +23,9 @@ export async function GET(
         a.title,
         a.description,
         a.due_date as "dueDate",
+        a.ai_prompts_enabled as "aiPromptsEnabled",
+        a.ai_overall_prompt as "aiOverallPrompt",
+        a.ai_criteria_prompt as "aiCriteriaPrompt",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",
         c.course_id as "courseId",
@@ -144,8 +147,11 @@ export async function PUT(
         description = $2,
         due_date = $3,
         course_id = $4,
+        ai_prompts_enabled = $5,
+        ai_overall_prompt = $6,
+        ai_criteria_prompt = $7,
         updated_at = NOW()
-      WHERE assignment_id = $5
+      WHERE assignment_id = $8
       RETURNING assignment_id as id
     `;
     
@@ -154,6 +160,9 @@ export async function PUT(
       body.description || null,
       body.dueDate,
       courseId,
+      body.aiPromptsEnabled ?? true,
+      body.aiOverallPrompt?.trim() || null,
+      body.aiCriteriaPrompt?.trim() || null,
       assignmentId
     ];
     
@@ -166,6 +175,9 @@ export async function PUT(
         a.title,
         a.description,
         a.due_date as "dueDate",
+        a.ai_prompts_enabled as "aiPromptsEnabled",
+        a.ai_overall_prompt as "aiOverallPrompt",
+        a.ai_criteria_prompt as "aiCriteriaPrompt",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",
         c.course_id as "courseId",

@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Parse request body
-    const { title, description, courseId, dueDate } = await request.json();
+    const { title, description, courseId, dueDate, aiPromptsEnabled, aiOverallPrompt, aiCriteriaPrompt } = await request.json();
     
     // Validate input
     if (!title || !title.trim()) {
@@ -119,15 +119,18 @@ export async function POST(request: NextRequest) {
     // Insert assignment into database
     const result = await pool.query(
       `INSERT INTO peer_assessment.assignments
-        (title, description, course_id, due_date) 
+        (title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt) 
        VALUES 
-        ($1, $2, $3, $4) 
-       RETURNING assignment_id, title, description, course_id, due_date, created_at, updated_at`,
+        ($1, $2, $3, $4, $5, $6, $7) 
+       RETURNING assignment_id, title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, created_at, updated_at`,
       [
         title.trim(), 
         description?.trim() || null, 
         courseId,
-        new Date(dueDate + 'T23:59:59')
+        new Date(dueDate + 'T23:59:59'),
+        aiPromptsEnabled ?? true,
+        aiOverallPrompt?.trim() || null,
+        aiCriteriaPrompt?.trim() || null
       ]
     );
     
@@ -162,6 +165,9 @@ export async function POST(request: NextRequest) {
         courseName: course.course_name,
         instructorId: course.instructor_id,
         instructorName: course.instructor_name,
+        aiPromptsEnabled: newAssignment.ai_prompts_enabled,
+        aiOverallPrompt: newAssignment.ai_overall_prompt,
+        aiCriteriaPrompt: newAssignment.ai_criteria_prompt,
         submissionsCount: 0,
         totalStudents: 0,
         createdAt: newAssignment.created_at,

@@ -179,41 +179,23 @@ function ViewReviewFeedback({ review, submission, rubricCriteria }: {
 export default function ReviewPage() {
   const router = useRouter();
   const params = useParams();
+  const reviewId = Array.isArray(params?.reviewId) ? params.reviewId[0] : params?.reviewId;
   
-  // Handle the case where params might be null or reviewId might not be available
-  if (!params || !params.reviewId) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Invalid Review ID</h2>
-          <p className="mt-2 text-gray-600">The review ID is missing or invalid.</p>
-          <Link
-            href="/dashboard"
-            className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-          >
-            Return to Dashboard
-          </Link>
-        </div>
-      </div>
-    );
-  }
-  
-  const reviewId = params.reviewId as string;
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [assignment, setAssignment] = useState<any | null>(null);
   const [rubricCriteria, setRubricCriteria] = useState<RubricCriterion[]>([]);
   const [criteriaScores, setCriteriaScores] = useState<CriterionScore[]>([]);
   const [overallFeedback, setOverallFeedback] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('submission');
+  const [activeTab, setActiveTab] = useState<'submission' | 'review'>('submission');
   const [submitted, setSubmitted] = useState(false);
-  const [viewMode, setViewMode] = useState(false);
   
   // Fetch review data
   useEffect(() => {
@@ -318,6 +300,22 @@ export default function ReviewPage() {
           // Continue without a rubric
           setRubricCriteria([]);
           setCriteriaScores([]);
+        }
+
+        // Fetch assignment details for AI prompt configuration
+        try {
+          const assignmentResponse = await fetch(`/api/assignments/${submissionData.submission.assignmentId}`);
+          if (assignmentResponse.ok) {
+            const assignmentData = await assignmentResponse.json();
+            setAssignment(assignmentData);
+            console.log('Assignment data fetched:', assignmentData);
+          } else {
+            console.warn(`Failed to fetch assignment ${submissionData.submission.assignmentId}`);
+            setAssignment(null);
+          }
+        } catch (assignmentError) {
+          console.error('Error fetching assignment:', assignmentError);
+          setAssignment(null);
         }
         
         if (reviewData.review.overallFeedback) {
@@ -751,7 +749,13 @@ export default function ReviewPage() {
                       scores={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.score }), {})}
                       feedback={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.feedback }), {})}
                       overallFeedback={overallFeedback}
-                      assignment={{ title: submission?.assignmentTitle || '', content: submission?.content || '' }}
+                      assignment={{
+                        title: assignment?.title || submission?.assignmentTitle || '',
+                        content: assignment?.description || submission?.content || '',
+                        aiPromptsEnabled: assignment?.aiPromptsEnabled,
+                        aiOverallPrompt: assignment?.aiOverallPrompt,
+                        aiCriteriaPrompt: assignment?.aiCriteriaPrompt
+                      }}
                       onAIFeedbackSelect={handleAIFeedbackSelect}
                       onAIOverallFeedbackSelect={handleAIOverallFeedbackSelect}
                     />

@@ -18,6 +18,9 @@ interface AIReviewAnalysisProps {
   assignment: {
     title: string;
     content: string;
+    aiPromptsEnabled?: boolean;
+    aiOverallPrompt?: string;
+    aiCriteriaPrompt?: string;
   };
   onAIFeedbackSelect: (criterionId: number, feedbackText: string) => void;
   onAIOverallFeedbackSelect: (feedbackText: string) => void;
@@ -73,7 +76,23 @@ export default function AIReviewAnalysis({
   const generateAnalysis = async () => {
     setIsAnalyzing(true);
     
+    // Debug: Log the assignment data to see what AI prompts are available
+    console.log('=== AI PROMPT DEBUGGING ===');
+    console.log('Assignment data:', assignment);
+    console.log('AI Prompts Enabled:', assignment.aiPromptsEnabled);
+    console.log('Custom Overall Prompt:', assignment.aiOverallPrompt);
+    console.log('Custom Criteria Prompt:', assignment.aiCriteriaPrompt);
+    
     try {
+      // Check if AI prompts are enabled for this assignment
+      if (assignment.aiPromptsEnabled === false) {
+        setAiSuggestions({});
+        setAiOverallSuggestion('AI analysis is disabled for this assignment.');
+        setIsAnalyzing(false);
+        setAnalysisGenerated(true);
+        return;
+      }
+
       // Initialize OpenAI client
       const openai = new OpenAI({
         apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || '',
@@ -95,19 +114,27 @@ export default function AIReviewAnalysis({
         };
       });
       
-      // Generate prompt for overall feedback
-      const overallPrompt = `
-        You are an AI assistant helping a student improve their peer review feedback.
-        
-        Assignment: ${assignment.title}
-        Assignment Description: ${assignment.content}
-        
-        Overall feedback provided: "${overallFeedback}"
-        
-        Total score: ${totalScore}/${maxPossibleScore} (${scorePercentage.toFixed(2)}%)
-        
-        Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced. Keep your response concise and actionable.
-      `;
+      // Use custom overall prompt if available, otherwise use default
+      const defaultOverallPrompt = `Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced. Keep your response concise and actionable.`;
+
+      const overallPromptTemplate = assignment.aiOverallPrompt || defaultOverallPrompt;
+      
+      console.log('Using Overall Prompt Template:', overallPromptTemplate);
+      console.log('Is using custom prompt?', !!assignment.aiOverallPrompt);
+      
+      // Build the complete prompt with system context + instructor's custom instructions
+      const overallPrompt = `You are an AI assistant helping a student improve their peer review feedback.
+
+Assignment: ${assignment.title}
+Assignment Description: ${assignment.content}
+
+Overall feedback provided: "${overallFeedback}"
+
+Total score: ${totalScore}/${maxPossibleScore} (${scorePercentage.toFixed(2)}%)
+
+${overallPromptTemplate}`;
+
+      console.log('Complete Overall Prompt sent to AI:', overallPrompt);
       
       // Call OpenAI API for overall feedback
       const overallResponse = await openai.chat.completions.create({
@@ -131,34 +158,42 @@ export default function AIReviewAnalysis({
       // Generate criteria-specific suggestions
       const suggestions: {[key: number]: string[]} = {};
       
+      // Use custom criteria prompt if available, otherwise use default
+      const defaultCriteriaPrompt = `Your tasks:
+
+1. Suggest 1 specific improvement to the feedback for this criterion to the reviewer. The suggestion should be concise and actionable.
+2. After the suggestion, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvement. Write it in the reviewer's voice.
+
+Format your response as:
+1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"`;
+
+      const criteriaPromptTemplate = assignment.aiCriteriaPrompt || defaultCriteriaPrompt;
+      
+      console.log('Using Criteria Prompt Template:', criteriaPromptTemplate);
+      console.log('Is using custom criteria prompt?', !!assignment.aiCriteriaPrompt);
+      
       // Process each criterion sequentially
       for (const criterion of criteria) {
         const criterionScore = scores[criterion.id] || 0;
         const scorePercentage = (criterionScore / criterion.maxPoints) * 100;
         const criterionFeedback = feedback[criterion.id] || '';
         
-        const criterionPrompt = `
-          You are an AI assistant helping a student improve their peer review feedback.
-          Assignment: ${assignment.title}
-          Assignment Description: ${assignment.content}
-          Criterion: ${criterion.name}
-          Description: ${criterion.description}
-          Max Points: ${criterion.maxPoints}
-          Score Given: ${criterionScore} (${scorePercentage.toFixed(2)}%)
-          Feedback Provided: "${criterionFeedback}"
-          
-          Your tasks:
+        // Build the complete prompt with system context + instructor's custom instructions
+        const criterionPrompt = `You are an AI assistant helping a student improve their peer review feedback.
+Assignment: ${assignment.title}
+Assignment Description: ${assignment.content}
+Criterion: ${criterion.name}
+Description: ${criterion.description}
+Max Points: ${criterion.maxPoints}
+Score Given: ${criterionScore} (${scorePercentage.toFixed(2)}%)
+Feedback Provided: "${criterionFeedback}"
 
-          1. Suggest 1 specific improvement to the feedback for this criterion to the reviewer. The suggestion should be concise and actionable.
-          2. After the suggestion, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvement. Write it in the reviewer's voice.
+${criteriaPromptTemplate}`;
 
-          Format your response as:
-          1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
-          
-        `;
+        console.log(`Complete Criteria Prompt for ${criterion.name}:`, criterionPrompt);
         
         const criterionResponse = await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: "gpt-3.5-turbo",
           messages: [
             {
               role: "system",

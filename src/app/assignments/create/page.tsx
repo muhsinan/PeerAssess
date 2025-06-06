@@ -16,7 +16,16 @@ export default function CreateAssignment() {
     title: '',
     description: '',
     courseId: '',
-    dueDate: ''
+    dueDate: '',
+    aiPromptsEnabled: true,
+    aiOverallPrompt: `Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced. Keep your response concise and actionable.`,
+    aiCriteriaPrompt: `Your tasks:
+
+1. Suggest 1 specific improvement to the feedback for this criterion to the reviewer. The suggestion should be concise and actionable.
+2. After the suggestion, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvement. Write it in the reviewer's voice.
+
+Format your response as:
+1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"`
   });
   
   const [availableCourses, setAvailableCourses] = useState<Array<{
@@ -68,10 +77,12 @@ export default function CreateAssignment() {
 
   // Handle input changes for the form
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
+    
     setFormData({
       ...formData,
-      [name]: value
+      [name]: type === 'checkbox' ? checked : value
     });
   };
 
@@ -110,7 +121,10 @@ export default function CreateAssignment() {
           title: formData.title,
           description: formData.description,
           courseId: parseInt(formData.courseId),
-          dueDate: formData.dueDate
+          dueDate: formData.dueDate,
+          aiPromptsEnabled: formData.aiPromptsEnabled,
+          aiOverallPrompt: formData.aiOverallPrompt,
+          aiCriteriaPrompt: formData.aiCriteriaPrompt
         })
       });
       
@@ -311,6 +325,83 @@ export default function CreateAssignment() {
                           className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
                           placeholder="Describe the assignment requirements, objectives, and any special instructions..."
                         />
+                      </div>
+                    </div>
+
+                    {/* AI Configuration Section */}
+                    <div className="sm:col-span-6">
+                      <div className="border-t border-gray-200 pt-6">
+                        <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 mr-2 text-purple-600">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                          </svg>
+                          AI Review Analysis Configuration
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Configure AI prompts for peer review analysis. Students will receive AI-powered suggestions to improve their reviews.
+                        </p>
+                        
+                        {/* Enable AI Prompts Toggle */}
+                        <div className="mt-4">
+                          <div className="flex items-center">
+                            <input
+                              id="aiPromptsEnabled"
+                              name="aiPromptsEnabled"
+                              type="checkbox"
+                              checked={formData.aiPromptsEnabled}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                            />
+                            <label htmlFor="aiPromptsEnabled" className="ml-2 block text-sm text-gray-900">
+                              Enable AI-powered review analysis for this assignment
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* AI Prompt Configuration (only show if enabled) */}
+                        {formData.aiPromptsEnabled && (
+                          <div className="mt-6 space-y-6">
+                            {/* Overall Feedback Prompt */}
+                            <div>
+                              <label htmlFor="aiOverallPrompt" className="block text-sm font-medium text-gray-700">
+                                Overall Feedback Analysis Prompt
+                              </label>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Configure the instructions for AI analysis of overall feedback. System context (assignment details, scores) is added automatically.
+                              </p>
+                              <div className="mt-2">
+                                <textarea
+                                  id="aiOverallPrompt"
+                                  name="aiOverallPrompt"
+                                  rows={8}
+                                  value={formData.aiOverallPrompt}
+                                  onChange={handleInputChange}
+                                  className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md font-mono text-xs"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Criteria Feedback Prompt */}
+                            <div>
+                              <label htmlFor="aiCriteriaPrompt" className="block text-sm font-medium text-gray-700">
+                                Criteria-Specific Feedback Analysis Prompt
+                              </label>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Configure the instructions for AI analysis of individual criteria feedback. System context (criterion details, scores) is added automatically.
+                              </p>
+                              <div className="mt-2">
+                                <textarea
+                                  id="aiCriteriaPrompt"
+                                  name="aiCriteriaPrompt"
+                                  rows={12}
+                                  value={formData.aiCriteriaPrompt}
+                                  onChange={handleInputChange}
+                                  className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md font-mono text-xs"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
