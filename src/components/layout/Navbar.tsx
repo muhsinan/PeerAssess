@@ -11,10 +11,14 @@ const navigation = {
     { name: 'Dashboard', href: '/dashboard', current: false },
   ],
   student: [
+    { name: 'My Courses', href: '/my-courses', current: false },
     { name: 'My Assignments', href: '/my-assignments', current: false },
     { name: 'My Submissions', href: '/my-submissions', current: false },
+    { name: 'Peer Reviews', href: '/peer-reviews', current: false },
   ],
   instructor: [
+    { name: 'Courses', href: '/courses', current: false },
+    { name: 'Assignments', href: '/assignments', current: false },
     { name: 'Peer Reviews', href: '/peer-reviews', current: false },
     { name: 'Rubrics', href: '/rubrics', current: false },
   ]
