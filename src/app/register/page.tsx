@@ -1,13 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
 
+interface InvitationData {
+  courseId: number;
+  courseName: string;
+  instructorName: string;
+  studentEmail: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export default function Register() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const invitationToken = searchParams?.get('invitation') || null;
+  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -18,6 +30,38 @@ export default function Register() {
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [invitation, setInvitation] = useState<InvitationData | null>(null);
+  const [invitationVerified, setInvitationVerified] = useState(false);
+  const [invitationError, setInvitationError] = useState<string | null>(null);
+
+  // Verify invitation token on component mount
+  useEffect(() => {
+    if (invitationToken) {
+      verifyInvitation(invitationToken);
+    }
+  }, [invitationToken]);
+
+  const verifyInvitation = async (token: string) => {
+    try {
+      const response = await fetch(`/api/invitations/verify?token=${token}`);
+      const data = await response.json();
+      
+      if (response.ok && data.valid) {
+        setInvitation(data.invitation);
+        setFormData(prev => ({
+          ...prev,
+          email: data.invitation.studentEmail,
+          role: 'student'
+        }));
+        setInvitationVerified(true);
+      } else {
+        setInvitationError(data.error || 'Invalid invitation link');
+      }
+    } catch (error) {
+      console.error('Error verifying invitation:', error);
+      setInvitationError('Failed to verify invitation. Please try again.');
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -72,17 +116,24 @@ export default function Register() {
     
     try {
       // Call our registration API
+      const registrationBody: any = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role
+      };
+      
+      // Include invitation token if present
+      if (invitationToken) {
+        registrationBody.invitationToken = invitationToken;
+      }
+      
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: formData.role
-        }),
+        body: JSON.stringify(registrationBody),
       });
       
       const data = await response.json();
@@ -115,6 +166,46 @@ export default function Register() {
     }
   };
 
+  // Show error if invitation is invalid
+  if (invitationToken && invitationError) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Navbar />
+        <div className="flex-grow flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-md w-full space-y-8">
+            <div className="text-center">
+              <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Invalid Invitation</h2>
+              <div className="mt-4 rounded-md bg-red-50 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">Invitation Error</h3>
+                    <div className="mt-2 text-sm text-red-700">
+                      <p>{invitationError}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-6">
+                <Link 
+                  href="/register" 
+                  className="text-indigo-600 hover:text-indigo-500 font-medium"
+                >
+                  Continue with regular registration
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -122,9 +213,35 @@ export default function Register() {
       <div className="flex-grow flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              Create your account
-            </h2>
+            {invitation ? (
+              <div>
+                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                  Join {invitation.courseName}
+                </h2>
+                <div className="mt-4 rounded-md bg-blue-50 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800">Course Invitation</h3>
+                      <div className="mt-2 text-sm text-blue-700">
+                        <p>You've been invited by {invitation.instructorName} to join "{invitation.courseName}".</p>
+                        <p className="mt-1">Create your account below to get started!</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                  Create your account
+                </h2>
+              </div>
+            )}
             <p className="mt-2 text-center text-sm text-gray-600">
               Or{' '}
               <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
@@ -183,14 +300,18 @@ export default function Register() {
                   type="email"
                   autoComplete="email"
                   required
+                  disabled={invitation !== null}
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.email ? 'border-red-300' : 'border-gray-300'
-                  } placeholder-gray-500 text-black focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
+                  } ${invitation ? 'bg-gray-100 text-gray-600' : 'text-black'} placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
                   placeholder="example@university.edu"
                   value={formData.email}
                   onChange={handleChange}
                 />
                 {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+                {invitation && (
+                  <p className="mt-1 text-xs text-gray-500">Email is pre-filled from your invitation</p>
+                )}
               </div>
               
               <div className="mb-4">
@@ -233,21 +354,23 @@ export default function Register() {
                 {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
               </div>
               
-              <div className="mb-4">
-                <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <select
-                  id="role"
-                  name="role"
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  value={formData.role}
-                  onChange={handleChange}
-                >
-                  <option value="student">Student</option>
-                  <option value="instructor">Instructor</option>
-                </select>
-              </div>
+              {!invitation && (
+                <div className="mb-4">
+                  <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+                    Role
+                  </label>
+                  <select
+                    id="role"
+                    name="role"
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                    value={formData.role}
+                    onChange={handleChange}
+                  >
+                    <option value="student">Student</option>
+                    <option value="instructor">Instructor</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center">

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '../../../../components/layout/Layout';
 import Link from 'next/link';
+import BulkStudentUpload from '@/components/BulkStudentUpload';
 
 export default function AddStudentsToCourse({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -177,26 +178,14 @@ export default function AddStudentsToCourse({ params }: { params: Promise<{ id: 
   // Add new student by email
   const addStudentByEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!newStudentEmail.trim()) {
-      setErrorMessage('Please enter a valid email address.');
-      return;
-    }
-    
-    // Check if email is valid
-    const emailRegex = /\S+@\S+\.\S+/;
-    if (!emailRegex.test(newStudentEmail)) {
-      setErrorMessage('Please enter a valid email address.');
-      return;
-    }
+    setIsSubmitting(true);
+    setErrorMessage('');
+    setSuccessMessage('');
     
     try {
-      setIsSubmitting(true);
-      setErrorMessage('');
-      
-      // Check if student is already in our list
-      const existingStudent = students.find(student => 
-        student.email.toLowerCase() === newStudentEmail.toLowerCase()
+      // Check if student is already in our local list first
+      const existingStudent = students.find(
+        s => s.email.toLowerCase() === newStudentEmail.toLowerCase()
       );
       
       if (existingStudent) {
@@ -223,30 +212,35 @@ export default function AddStudentsToCourse({ params }: { params: Promise<{ id: 
       const data = await response.json();
       
       if (!response.ok) {
-        if (response.status === 404 && data.userExists === false) {
-          // Student doesn't exist in the system
-          setErrorMessage('Student not found in the system. They need to register first.');
-        } else {
-          throw new Error(data.error || 'Failed to add student to course');
-        }
+        throw new Error(data.error || 'Failed to add student to course');
       } else {
-        // Student added successfully
-        const newStudent = data.student;
-        
-        // Check if this student is already in our local list
-        const existingIndex = students.findIndex(s => s.id === newStudent.id);
-        
-        if (existingIndex >= 0) {
-          // Update the existing student
-          setStudents(students.map(s => 
-            s.id === newStudent.id ? { ...s, isEnrolled: true } : s
-          ));
+        if (data.userExists && data.newEnrollment) {
+          // Student exists and was added successfully
+          const newStudent = data.student;
+          
+          // Check if this student is already in our local list
+          const existingIndex = students.findIndex(s => s.id === newStudent.id);
+          
+          if (existingIndex >= 0) {
+            // Update the existing student
+            setStudents(students.map(s => 
+              s.id === newStudent.id ? { ...s, isEnrolled: true } : s
+            ));
+          } else {
+            // Add the new student to our list
+            setStudents([...students, newStudent]);
+          }
+          
+          setSuccessMessage(`${newStudent.name} has been added to the course.`);
+        } else if (!data.userExists && data.invitationSent) {
+          // Student doesn't exist - invitation was sent
+          setSuccessMessage(
+            `Invitation sent to ${data.email}! They will be automatically enrolled when they register using the invitation link.`
+          );
         } else {
-          // Add the new student to our list
-          setStudents([...students, newStudent]);
+          setSuccessMessage(data.message || 'Student processed successfully');
         }
         
-        setSuccessMessage(`${newStudent.name} has been added to the course.`);
         setNewStudentEmail('');
       }
     } catch (error) {
@@ -255,6 +249,16 @@ export default function AddStudentsToCourse({ params }: { params: Promise<{ id: 
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Add a new function to refresh data after bulk upload
+  const handleBulkUploadComplete = () => {
+    // Refresh the enrolled students list after bulk upload
+    fetchEnrolledStudents();
+    
+    // Clear any existing messages
+    setErrorMessage('');
+    setSuccessMessage('');
   };
 
   // If not authorized or still loading, show loading state
@@ -351,11 +355,11 @@ export default function AddStudentsToCourse({ params }: { params: Promise<{ id: 
             <div className="bg-white shadow sm:rounded-lg mb-6">
               <div className="px-4 py-5 sm:p-6">
                 <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Add New Student
+                  📝 Add Single Student
                 </h3>
                 <div className="mt-2 max-w-xl text-sm text-gray-500">
                   <p>
-                    Add a student by email to join this course. The student must already be registered in the system.
+                    Add a student by email to join this course. If the student is already registered, they will be added immediately. If not, an invitation email will be sent for them to register and join automatically.
                   </p>
                 </div>
                 <form onSubmit={addStudentByEmail} className="mt-5 sm:flex sm:items-center">
@@ -382,10 +386,18 @@ export default function AddStudentsToCourse({ params }: { params: Promise<{ id: 
                     disabled={isSubmitting}
                     className="mt-3 w-full inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isSubmitting ? 'Adding...' : 'Add Student'}
+                    {isSubmitting ? 'Processing...' : 'Add Student'}
                   </button>
                 </form>
               </div>
+            </div>
+
+            {/* Bulk Student Upload Component */}
+            <div className="mb-6">
+              <BulkStudentUpload 
+                courseId={courseId} 
+                onComplete={handleBulkUploadComplete}
+              />
             </div>
             
             {/* Student List */}

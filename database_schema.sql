@@ -124,6 +124,25 @@ CREATE INDEX idx_peer_review_scores_review_id ON peer_review_scores(review_id);
 CREATE INDEX idx_course_enrollments_course_id ON course_enrollments(course_id);
 CREATE INDEX idx_course_enrollments_student_id ON course_enrollments(student_id);
 
+-- Course invitations table (for inviting students who aren't registered yet)
+CREATE TABLE course_invitations (
+    invitation_id SERIAL PRIMARY KEY,
+    course_id INTEGER REFERENCES courses(course_id) ON DELETE CASCADE,
+    student_email VARCHAR(100) NOT NULL,
+    invitation_token VARCHAR(255) NOT NULL UNIQUE,
+    invited_by INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days'),
+    accepted_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(course_id, student_email)
+);
+
+-- Index for performance
+CREATE INDEX idx_course_invitations_course_id ON course_invitations(course_id);
+CREATE INDEX idx_course_invitations_email ON course_invitations(student_email);
+CREATE INDEX idx_course_invitations_token ON course_invitations(invitation_token);
+
 -- Sample data for testing
 
 -- Insert sample users (1 instructor and 3 students)

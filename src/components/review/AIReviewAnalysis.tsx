@@ -149,13 +149,11 @@ export default function AIReviewAnalysis({
           
           Your tasks:
 
-          1. Suggest 3 specific, numbered improvements to the feedback for this criterion to the reviewer. Each suggestion should be concise and actionable.
-          2. After each suggestions, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvements. Write it in the reviewer's voice.
+          1. Suggest 1 specific improvement to the feedback for this criterion to the reviewer. The suggestion should be concise and actionable.
+          2. After the suggestion, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvement. Write it in the reviewer's voice.
 
           Format your response as:
           1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
-          2. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
-          3. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"
           
         `;
         
@@ -164,7 +162,7 @@ export default function AIReviewAnalysis({
           messages: [
             {
               role: "system",
-              content: "You are a helpful assistant that provides constructive feedback suggestions for peer reviews. Provide exactly 3 numbered suggestions."
+              content: "You are a helpful assistant that provides constructive feedback suggestions for peer reviews. Provide exactly 1 numbered suggestion."
             },
             {
               role: "user",
@@ -184,7 +182,7 @@ export default function AIReviewAnalysis({
           .filter(Boolean)
           .map((suggestion: string) => suggestion.trim())
           .filter((suggestion: string) => suggestion.length > 10) // Filter out very short fragments
-          .slice(0, 3); // Take only first 3 suggestions
+          .slice(0, 1); // Take only first 1 suggestion
         
         console.log('Raw AI response:', criterionSuggestions);
         console.log('Parsed suggestions:', suggestionList);

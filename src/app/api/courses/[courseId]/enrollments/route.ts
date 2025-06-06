@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { createInvitationToken } from '@/lib/invitation-tokens';
+import { sendCourseInvitationEmail } from '@/lib/email';
 
 // GET all enrollments for a course
 export async function GET(
@@ -75,9 +77,12 @@ export async function POST(
       );
     }
     
-    // Check if course exists
+    // Check if course exists and get course details
     const courseCheck = await pool.query(
-      'SELECT course_id FROM peer_assessment.courses WHERE course_id = $1',
+      `SELECT c.course_id, c.name, c.instructor_id, u.name as instructor_name 
+       FROM peer_assessment.courses c
+       JOIN peer_assessment.users u ON c.instructor_id = u.user_id
+       WHERE c.course_id = $1`,
       [courseId]
     );
     
@@ -88,31 +93,71 @@ export async function POST(
       );
     }
     
+    const course = courseCheck.rows[0];
+    
     // Check if student exists in the system
     const studentCheck = await pool.query(
       'SELECT user_id, name, email FROM peer_assessment.users WHERE email = $1 AND role = $2',
       [email, 'student']
     );
     
-    let studentId: number;
-    let studentName: string;
-    let userExists = true;
-    
     if (studentCheck.rows.length === 0) {
-      // Student doesn't exist in the system
-      userExists = false;
-      return NextResponse.json(
-        { 
-          error: 'Student not found in the system',
+      // Student doesn't exist in the system - send invitation email
+      try {
+        // Check if there's already a pending invitation
+        const existingInvitation = await pool.query(
+          `SELECT invitation_id, status FROM peer_assessment.course_invitations 
+           WHERE course_id = $1 AND student_email = $2 AND status = 'pending' AND expires_at > CURRENT_TIMESTAMP`,
+          [courseId, email]
+        );
+        
+        let invitationToken: string;
+        
+        if (existingInvitation.rows.length > 0) {
+          // Get the existing token
+          const tokenResult = await pool.query(
+            'SELECT invitation_token FROM peer_assessment.course_invitations WHERE invitation_id = $1',
+            [existingInvitation.rows[0].invitation_id]
+          );
+          invitationToken = tokenResult.rows[0].invitation_token;
+        } else {
+          // Create new invitation token
+          invitationToken = await createInvitationToken(parseInt(courseId), email, course.instructor_id);
+        }
+        
+        // Send invitation email
+        const emailSent = await sendCourseInvitationEmail(
+          email, 
+          course.name, 
+          course.instructor_name, 
+          invitationToken
+        );
+        
+        if (!emailSent) {
+          return NextResponse.json(
+            { error: 'Failed to send invitation email' },
+            { status: 500 }
+          );
+        }
+        
+        return NextResponse.json({
+          message: 'Invitation sent successfully',
           userExists: false,
-          message: 'Student not found in the system. They need to register first.'
-        },
-        { status: 404 }
-      );
+          invitationSent: true,
+          email: email,
+          courseName: course.name
+        });
+      } catch (error) {
+        console.error('Error sending invitation:', error);
+        return NextResponse.json(
+          { error: 'Failed to send invitation email' },
+          { status: 500 }
+        );
+      }
     } else {
-      // Student exists
-      studentId = studentCheck.rows[0].user_id;
-      studentName = studentCheck.rows[0].name;
+      // Student exists - proceed with normal enrollment
+      const studentId = studentCheck.rows[0].user_id;
+      const studentName = studentCheck.rows[0].name;
       
       // Check if student is already enrolled in this course
       const enrollmentCheck = await pool.query(
