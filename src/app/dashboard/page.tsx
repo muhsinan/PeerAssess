@@ -676,7 +676,11 @@ function InstructorDashboard({ userName }: { userName: string }) {
   const [courses, setCourses] = useState<any[]>([]);
   const [recentAssignments, setRecentAssignments] = useState<any[]>([]);
   const [rubrics, setRubrics] = useState<any[]>([]);
+<<<<<<< HEAD
   const [pendingEnrollments, setPendingEnrollments] = useState<Record<number, number>>({});
+=======
+  const [pendingEnrollments, setPendingEnrollments] = useState<any>({});
+>>>>>>> 00a451961209e4e4094cc9b5992ef6bdca1353b8
   const [totalPendingCount, setTotalPendingCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -744,7 +748,11 @@ function InstructorDashboard({ userName }: { userName: string }) {
         console.log('Pending enrollments data received:', pendingData);
         
         // Create a map of course ID to pending count for easy lookup
+<<<<<<< HEAD
         const pendingMap: Record<number, number> = {};
+=======
+        const pendingMap = {};
+>>>>>>> 00a451961209e4e4094cc9b5992ef6bdca1353b8
         pendingData.coursesPendingCounts.forEach((course: any) => {
           pendingMap[course.courseId] = course.pendingCount;
         });
