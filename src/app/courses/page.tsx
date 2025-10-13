@@ -24,6 +24,8 @@ export default function CoursesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState<Record<number, number>>({});
+  const [totalPendingCount, setTotalPendingCount] = useState(0);
 
   // Check if user is authorized (must be an instructor)
   useEffect(() => {
@@ -60,6 +62,21 @@ export default function CoursesPage() {
         
         const data = await response.json();
         setCourses(data.courses || []);
+        
+        // Fetch pending enrollments
+        const pendingRes = await fetch(`/api/instructors/pending-enrollments?instructorId=${userId}`);
+        if (pendingRes.ok) {
+          const pendingData = await pendingRes.json();
+          
+          // Create a map of course ID to pending count for easy lookup
+          const pendingMap: Record<number, number> = {};
+          pendingData.coursesPendingCounts.forEach((course: any) => {
+            pendingMap[course.courseId] = course.pendingCount;
+          });
+          
+          setPendingEnrollments(pendingMap);
+          setTotalPendingCount(pendingData.totalPendingCount || 0);
+        }
       } catch (error) {
         console.error('Error fetching courses:', error);
         setError(error instanceof Error ? error.message : 'An unexpected error occurred');
@@ -151,9 +168,16 @@ export default function CoursesPage() {
         <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
           <div className="md:flex md:items-center md:justify-between">
             <div className="min-w-0 flex-1">
-              <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
-                My Courses
-              </h2>
+              <div className="flex items-center space-x-3">
+                <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
+                  My Courses
+                </h2>
+                {totalPendingCount > 0 && (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                    {totalPendingCount} pending enrollment{totalPendingCount !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-sm text-gray-500">
                 Manage and track all your courses
               </p>
@@ -195,10 +219,19 @@ export default function CoursesPage() {
                           <AcademicCapIcon className="h-8 w-8 text-purple-600" />
                         </div>
                         <div className="ml-4 w-0 flex-1">
-                          <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-medium text-gray-900 truncate">
-                              {course.name}
-                            </h3>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-lg font-medium text-gray-900 truncate">
+                                {course.name}
+                              </h3>
+                              {pendingEnrollments[course.id] > 0 && (
+                                <div className="mt-1">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    {pendingEnrollments[course.id]} pending
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div className="mt-1">
                             <div className="flex items-center text-sm text-gray-500">
@@ -221,21 +254,34 @@ export default function CoursesPage() {
                         Created: {formatDate(course.createdAt)}
                       </div>
                       
-                      <div className="mt-6 flex space-x-3">
-                        <Link
-                          href={`/courses/${course.id}`}
-                          className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <EyeIcon className="h-4 w-4 mr-1" />
-                          Manage
-                        </Link>
-                        <Link
-                          href={`/courses/${course.id}/students`}
-                          className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <UsersIcon className="h-4 w-4 mr-1" />
-                          Students
-                        </Link>
+                      <div className="mt-6 flex flex-col space-y-2">
+                        <div className="flex space-x-3">
+                          <Link
+                            href={`/courses/${course.id}`}
+                            className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                          >
+                            <EyeIcon className="h-4 w-4 mr-1" />
+                            Manage
+                          </Link>
+                          <Link
+                            href={`/courses/${course.id}/students`}
+                            className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                          >
+                            <UsersIcon className="h-4 w-4 mr-1" />
+                            Students
+                          </Link>
+                        </div>
+                        {pendingEnrollments[course.id] > 0 && (
+                          <Link
+                            href={`/courses/${course.id}/pending-enrollments`}
+                            className="w-full inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                          >
+                            <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Review Requests ({pendingEnrollments[course.id]})
+                          </Link>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -246,7 +292,7 @@ export default function CoursesPage() {
           
           {courses.length > 0 && (
             <div className="mt-8 bg-gray-50 rounded-lg p-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-600">{courses.length}</div>
                   <div className="text-sm text-gray-600">Total Courses</div>
@@ -262,6 +308,12 @@ export default function CoursesPage() {
                     {Math.round(courses.reduce((total, course) => total + course.studentsCount, 0) / courses.length) || 0}
                   </div>
                   <div className="text-sm text-gray-600">Avg Students per Course</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-2xl font-bold ${totalPendingCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                    {totalPendingCount}
+                  </div>
+                  <div className="text-sm text-gray-600">Pending Enrollments</div>
                 </div>
               </div>
             </div>

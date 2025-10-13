@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         FROM 
           peer_assessment.submissions
         WHERE 
-          student_id = $1 AND status = 'submitted'
+          student_id = $1 AND status IN ('submitted', 'reviewed')
         GROUP BY 
           assignment_id, submission_id
       )
@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         s.content,
         s.status,
         s.submission_date as "submissionDate",
+        s.ai_submission_analysis as "aiAnalysis",
         a.title as "assignmentTitle",
         a.assignment_id as "assignmentId",
         a.due_date as "dueDate",
@@ -121,12 +122,13 @@ export async function GET(request: NextRequest) {
           SELECT json_agg(json_build_object(
             'id', pr.review_id,
             'reviewerId', pr.reviewer_id,
-            'reviewerName', u.name,
+            'reviewerName', 'Anonymous Reviewer',
             'status', pr.status,
             'assignedDate', pr.assigned_date,
             'completedDate', pr.completed_date,
             'overallFeedback', pr.overall_feedback,
-            'totalScore', pr.total_score
+            'totalScore', pr.total_score,
+            'aiSynthesis', pr.ai_feedback_synthesis
           ))
           FROM peer_assessment.peer_reviews pr
           JOIN peer_assessment.users u ON pr.reviewer_id = u.user_id
@@ -148,6 +150,7 @@ export async function GET(request: NextRequest) {
     const submissions = submissionsResult.rows;
 
     // Fetch assigned peer reviews (reviews student needs to complete)
+    // Include check for whether the reviewer has submitted their own assignment
     const assignedReviewsQuery = `
       SELECT 
         pr.review_id as id,
@@ -162,7 +165,11 @@ export async function GET(request: NextRequest) {
         a.assignment_id as "assignmentId",
         c.name as "courseName",
         c.course_id as "courseId",
-        a.due_date as "dueDate"
+        a.due_date as "dueDate",
+        CASE 
+          WHEN reviewer_submission.submission_id IS NOT NULL THEN true
+          ELSE false
+        END as "reviewerHasSubmitted"
       FROM 
         peer_assessment.peer_reviews pr
       JOIN 
@@ -173,9 +180,14 @@ export async function GET(request: NextRequest) {
         peer_assessment.assignments a ON s.assignment_id = a.assignment_id
       JOIN 
         peer_assessment.courses c ON a.course_id = c.course_id
+      LEFT JOIN 
+        peer_assessment.submissions reviewer_submission ON (
+          reviewer_submission.assignment_id = a.assignment_id 
+          AND reviewer_submission.student_id = pr.reviewer_id 
+          AND reviewer_submission.status IN ('submitted', 'reviewed')
+        )
       WHERE 
-        pr.reviewer_id = $1 
-        AND pr.status != 'completed'
+        pr.reviewer_id = $1
       ORDER BY 
         pr.assigned_date ASC
     `;
@@ -183,18 +195,29 @@ export async function GET(request: NextRequest) {
     const assignedReviews = assignedReviewsResult.rows;
 
     // Fetch recent feedback (reviews others have completed on student's submissions)
+    // Group by submission and include stored aggregated synthesis
     const receivedFeedbackQuery = `
       SELECT 
-        pr.review_id as id,
-        pr.overall_feedback as overallFeedback,
-        pr.completed_date as completedDate,
-        pr.total_score as totalScore,
         s.submission_id as submissionId,
         s.title as submissionTitle,
-        u.name as reviewerName,
+        s.aggregated_feedback_synthesis as aggregatedSynthesis,
+        s.aggregated_synthesis_generated_at as aggregatedSynthesisGeneratedAt,
         a.title as assignmentTitle,
         c.name as courseName,
-        c.course_id as courseId
+        c.course_id as courseId,
+        array_agg(
+          json_build_object(
+            'reviewId', pr.review_id,
+            'overallFeedback', pr.overall_feedback,
+            'aiSynthesis', pr.ai_feedback_synthesis,
+            'completedDate', pr.completed_date,
+            'totalScore', pr.total_score,
+            'isAiGenerated', pr.is_ai_generated
+          ) ORDER BY pr.completed_date DESC
+        ) as reviews,
+        COUNT(pr.review_id) as reviewCount,
+        MAX(pr.completed_date) as latestCompletedDate,
+        AVG(pr.total_score) as averageScore
       FROM 
         peer_assessment.peer_reviews pr
       JOIN 
@@ -207,12 +230,24 @@ export async function GET(request: NextRequest) {
         peer_assessment.courses c ON a.course_id = c.course_id
       WHERE 
         s.student_id = $1 AND pr.status = 'completed'
+      GROUP BY 
+        s.submission_id, s.title, s.aggregated_feedback_synthesis, s.aggregated_synthesis_generated_at, a.title, c.name, c.course_id
       ORDER BY 
-        pr.completed_date DESC
+        MAX(pr.completed_date) DESC
       LIMIT 5
     `;
     const receivedFeedbackResult = await pool.query(receivedFeedbackQuery, [studentId]);
     const receivedFeedback = receivedFeedbackResult.rows;
+
+    // Use stored aggregated synthesis from database (no need to regenerate)
+    const processedFeedback = receivedFeedback.map((feedback) => {
+      return {
+        ...feedback,
+        // Use the aggregated synthesis from the database if it exists
+        aggregatedSynthesis: feedback.aggregatedsynthesis || feedback.aggregatedSynthesis,
+        reviews: feedback.reviews || []
+      };
+    });
 
     // Return all dashboard data
     return NextResponse.json({
@@ -264,19 +299,20 @@ export async function GET(request: NextRequest) {
         courseName: review.courseName,
         status: review.status,
         assignedDate: review.assignedDate,
-        dueDate: review.dueDate
+        dueDate: review.dueDate,
+        reviewerHasSubmitted: review.reviewerHasSubmitted
       })),
-      receivedFeedback: receivedFeedback.map(feedback => ({
-        id: feedback.id,
-        overallFeedback: feedback.overallfeedback || feedback.overallFeedback || '',
-        completedDate: feedback.completeddate || feedback.completedDate,
-        totalScore: feedback.totalscore || feedback.totalScore || 0,
+      receivedFeedback: processedFeedback.map(feedback => ({
         submissionId: feedback.submissionid || feedback.submissionId,
         submissionTitle: feedback.submissiontitle || feedback.submissionTitle,
-        reviewerName: feedback.reviewername || feedback.reviewerName,
         assignmentTitle: feedback.assignmenttitle || feedback.assignmentTitle,
         courseName: feedback.coursename || feedback.courseName,
-        courseId: feedback.courseid || feedback.courseId
+        courseId: feedback.courseid || feedback.courseId,
+        reviews: feedback.reviews || [],
+        reviewCount: parseInt(feedback.reviewcount || feedback.reviewCount || '0'),
+        latestCompletedDate: feedback.latestcompleteddate || feedback.latestCompletedDate,
+        averageScore: parseFloat(feedback.averagescore || feedback.averageScore || '0'),
+        aggregatedSynthesis: feedback.aggregatedSynthesis
       }))
     });
   } catch (error) {

@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 import { verifyInvitationToken, acceptInvitation } from '@/lib/invitation-tokens';
+import { createEmailVerificationToken } from '@/lib/email-verification-tokens';
+import { sendEmailVerificationEmail } from '@/lib/emailjs';
 
 export async function POST(request: NextRequest) {
   try {
     // Parse request body
-    const { name, email, password, role, invitationToken } = await request.json();
+    const { name, email, password, role = 'student', invitationToken, selectedCourseId } = await request.json();
 
     // Validate input
-    if (!name || !email || !password || !role) {
+    if (!name || !email || !password) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -25,10 +27,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate role
-    if (!['student', 'instructor'].includes(role)) {
+    // Validate email domain for students (must be @metu.edu.tr)
+    if (role === 'student' && !email.toLowerCase().endsWith('@metu.edu.tr')) {
       return NextResponse.json(
-        { error: 'Role must be either student or instructor' },
+        { error: 'Students must use a @metu.edu.tr email address' },
+        { status: 400 }
+      );
+    }
+
+    // Only allow student role for regular registration
+    if (role !== 'student') {
+      return NextResponse.json(
+        { error: 'Only student registration is allowed through this endpoint' },
         { status: 400 }
       );
     }
@@ -77,59 +87,34 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Begin transaction
-    await pool.query('BEGIN');
-
+    // Create email verification token instead of creating user immediately
     try {
-      // Insert user into database
-      const result = await pool.query(
-        'INSERT INTO peer_assessment.users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING user_id, name, email, role',
-        [name, email, hashedPassword, role]
+      const verificationToken = await createEmailVerificationToken(
+        email,
+        name,
+        hashedPassword,
+        selectedCourseId,
+        invitationToken
       );
 
-      const newUser = result.rows[0];
+      console.log('Verification token created for:', email);
 
-      // If this is an invitation registration, enroll the student in the course
-      if (invitation) {
-        // Enroll the student in the course
-        await pool.query(
-          'INSERT INTO peer_assessment.course_enrollments (course_id, student_id) VALUES ($1, $2)',
-          [invitation.course_id, newUser.user_id]
-        );
-
-        // Mark invitation as accepted
-        await acceptInvitation(invitationToken);
-      }
-
-      // Commit transaction
-      await pool.query('COMMIT');
-
-      // Return success response
+      // Return success response with token for frontend to send email
       return NextResponse.json(
         {
-          message: invitation 
-            ? `Registration successful! You have been enrolled in ${invitation.course_name}.`
-            : 'User registered successfully',
-          user: {
-            id: newUser.user_id,
-            name: newUser.name,
-            email: newUser.email,
-            role: newUser.role
-          },
-          ...(invitation && {
-            enrolledCourse: {
-              id: invitation.course_id,
-              name: invitation.course_name,
-              instructor: invitation.instructor_name
-            }
-          })
+          message: 'Registration initiated! Please check your email and click the verification link to complete your registration.',
+          requiresVerification: true,
+          email: email,
+          verificationToken: verificationToken
         },
-        { status: 201 }
+        { status: 200 }
       );
-    } catch (transactionError) {
-      // Rollback transaction
-      await pool.query('ROLLBACK');
-      throw transactionError;
+    } catch (error) {
+      console.error('Failed to create verification token:', error);
+      return NextResponse.json(
+        { error: 'Registration failed. Please try again.' },
+        { status: 500 }
+      );
     }
   } catch (error) {
     console.error('Registration error:', error);

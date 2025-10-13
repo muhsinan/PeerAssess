@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
+import TermsModal from '../../components/TermsModal';
+import PrivacyModal from '../../components/PrivacyModal';
+import { sendEmailVerificationEmail } from '../../lib/emailjs';
 
 interface InvitationData {
   courseId: number;
@@ -13,6 +16,15 @@ interface InvitationData {
   studentEmail: string;
   expiresAt: string;
   createdAt: string;
+}
+
+interface Course {
+  id: number;
+  name: string;
+  description: string;
+  instructorId: number;
+  instructorName: string;
+  studentsCount: number;
 }
 
 function RegisterForm() {
@@ -25,7 +37,7 @@ function RegisterForm() {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'student'
+    selectedCourseId: ''
   });
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,6 +45,13 @@ function RegisterForm() {
   const [invitation, setInvitation] = useState<InvitationData | null>(null);
   const [invitationVerified, setInvitationVerified] = useState(false);
   const [invitationError, setInvitationError] = useState<string | null>(null);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  const [coursesError, setCoursesError] = useState<string | null>(null);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string>('');
 
   // Verify invitation token on component mount
   useEffect(() => {
@@ -40,6 +59,33 @@ function RegisterForm() {
       verifyInvitation(invitationToken);
     }
   }, [invitationToken]);
+
+  // Fetch available courses for students to choose from (only if not using invitation)
+  useEffect(() => {
+    if (!invitationToken) {
+      fetchCourses();
+    }
+  }, [invitationToken]);
+
+  const fetchCourses = async () => {
+    try {
+      setIsLoadingCourses(true);
+      setCoursesError(null);
+      
+      const response = await fetch('/api/courses');
+      if (!response.ok) {
+        throw new Error('Failed to fetch courses');
+      }
+      
+      const data = await response.json();
+      setCourses(data.courses || []);
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      setCoursesError('Failed to load courses. Please try again.');
+    } finally {
+      setIsLoadingCourses(false);
+    }
+  };
 
   const verifyInvitation = async (token: string) => {
     try {
@@ -50,8 +96,7 @@ function RegisterForm() {
         setInvitation(data.invitation);
         setFormData(prev => ({
           ...prev,
-          email: data.invitation.studentEmail,
-          role: 'student'
+          email: data.invitation.studentEmail
         }));
         setInvitationVerified(true);
       } else {
@@ -87,6 +132,8 @@ function RegisterForm() {
       newErrors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Email is invalid';
+    } else if (!formData.email.toLowerCase().endsWith('@metu.edu.tr')) {
+      newErrors.email = 'Students must use a @metu.edu.tr email address';
     }
     
     if (!formData.password) {
@@ -120,12 +167,17 @@ function RegisterForm() {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        role: formData.role
+        role: 'student'
       };
       
       // Include invitation token if present
       if (invitationToken) {
         registrationBody.invitationToken = invitationToken;
+      }
+      
+      // Include selected course if present
+      if (formData.selectedCourseId && !invitationToken) {
+        registrationBody.selectedCourseId = parseInt(formData.selectedCourseId);
       }
       
       const response = await fetch('/api/auth/register', {
@@ -142,22 +194,36 @@ function RegisterForm() {
         throw new Error(data.error || 'Registration failed');
       }
       
-      // Store user data using cookies which will be accessible to our middleware
-      document.cookie = `isLoggedIn=true; path=/; max-age=${60 * 60 * 24 * 7}`; // 1 week
-      document.cookie = `userRole=${formData.role}; path=/; max-age=${60 * 60 * 24 * 7}`;
-      document.cookie = `userName=${formData.name}; path=/; max-age=${60 * 60 * 24 * 7}`;
-      document.cookie = `userId=${data.user.id}; path=/; max-age=${60 * 60 * 24 * 7}`;
-      
-      // Also store in localStorage as a fallback for client-side access
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('isLoggedIn', 'true');
-        localStorage.setItem('userRole', formData.role);
-        localStorage.setItem('userName', formData.name);
-        localStorage.setItem('userId', data.user.id);
+      // Check if email verification is required
+      if (data.requiresVerification && data.verificationToken) {
+        try {
+          // Send verification email using EmailJS from the frontend
+          console.log('🔄 Attempting to send verification email to:', data.email);
+          console.log('🔑 Using verification token:', data.verificationToken);
+          
+          const emailResult = await sendEmailVerificationEmail(data.email, formData.name, data.verificationToken);
+          console.log('📧 Email send result:', emailResult);
+          
+          if (emailResult) {
+            console.log('✅ Verification email sent successfully via EmailJS');
+            
+            // Show in-page success message
+            setVerificationEmailSent(true);
+            setVerificationEmail(data.email);
+            
+            // Scroll to top to show the message
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else {
+            throw new Error('EmailJS returned false - check console for details');
+          }
+        } catch (emailError) {
+          console.error('❌ Failed to send verification email:', emailError);
+          throw new Error('Failed to send verification email. Please try again.');
+        }
+      } else {
+        // This shouldn't happen with the new flow, but handle just in case
+        throw new Error('Unexpected registration response');
       }
-      
-      // Redirect to dashboard
-      router.push('/dashboard');
     } catch (error) {
       console.error('Registration error:', error);
       setServerError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
@@ -238,7 +304,7 @@ function RegisterForm() {
             ) : (
               <div>
                 <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                  Create your account
+                  Create your student account
                 </h2>
               </div>
             )}
@@ -267,8 +333,43 @@ function RegisterForm() {
               </div>
             </div>
           )}
+
+          {verificationEmailSent && (
+            <div className="rounded-md bg-green-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.236 4.53L8.53 10.53a.75.75 0 00-1.06 1.061l2.03 2.03a.75.75 0 001.137-.089l3.857-5.401z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-green-800">Verification Email Sent!</h3>
+                  <div className="mt-2 text-sm text-green-700">
+                    <p>
+                      📧 We've sent a verification email to <strong>{verificationEmail}</strong>.
+                    </p>
+                    <p className="mt-1">
+                      🔗 Please check your email and click the verification link to complete your registration.
+                    </p>
+                    <p className="mt-1">
+                      ⏰ The verification link will expire in 24 hours.
+                    </p>
+                  </div>
+                  <div className="mt-3">
+                    <Link 
+                      href="/login?message=verification-sent" 
+                      className="text-sm font-medium text-green-800 hover:text-green-600 underline"
+                    >
+                      Go to login page →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {!verificationEmailSent && (
+            <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div className="mb-4">
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -304,7 +405,7 @@ function RegisterForm() {
                   className={`appearance-none rounded-md relative block w-full px-3 py-2 border ${
                     errors.email ? 'border-red-300' : 'border-gray-300'
                   } ${invitation ? 'bg-gray-100 text-gray-600' : 'text-black'} placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm`}
-                  placeholder="example@university.edu"
+                  placeholder="example@metu.edu.tr"
                   value={formData.email}
                   onChange={handleChange}
                 />
@@ -353,24 +454,58 @@ function RegisterForm() {
                 />
                 {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
               </div>
-              
+
+              {/* Course Selection - Only show if not using invitation */}
               {!invitation && (
                 <div className="mb-4">
-                  <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
+                  <label htmlFor="selectedCourseId" className="block text-sm font-medium text-gray-700 mb-1">
+                    Select a Course (Optional)
                   </label>
-                  <select
-                    id="role"
-                    name="role"
-                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                    value={formData.role}
-                    onChange={handleChange}
-                  >
-                    <option value="student">Student</option>
-                    <option value="instructor">Instructor</option>
-                  </select>
+                  
+                  {coursesError && (
+                    <div className="mb-2 text-sm text-red-600">
+                      {coursesError}
+                      <button 
+                        type="button" 
+                        onClick={fetchCourses}
+                        className="ml-2 text-indigo-600 hover:text-indigo-500 underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  )}
+                  
+                  {isLoadingCourses ? (
+                    <div className="flex items-center text-sm text-gray-500">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Loading courses...
+                    </div>
+                  ) : (
+                    <select
+                      id="selectedCourseId"
+                      name="selectedCourseId"
+                      className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      value={formData.selectedCourseId}
+                      onChange={handleChange}
+                    >
+                      <option value="">Choose a course to request enrollment...</option>
+                      {courses.map((course) => (
+                        <option key={course.id} value={course.id}>
+                          {course.name} - {course.instructorName} ({course.studentsCount} students)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  
+                  <p className="mt-1 text-xs text-gray-500">
+                    Your enrollment request will require instructor approval. You can request additional courses later from your dashboard.
+                  </p>
                 </div>
               )}
+              
             </div>
 
             <div className="flex items-center">
@@ -383,9 +518,21 @@ function RegisterForm() {
               />
               <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
                 I agree to the{' '}
-                <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">
+                <button
+                  type="button"
+                  onClick={() => setIsTermsModalOpen(true)}
+                  className="font-medium text-indigo-600 hover:text-indigo-500 underline"
+                >
                   Terms and Conditions
-                </a>
+                </button>
+                {' '}and{' '}
+                <button
+                  type="button"
+                  onClick={() => setIsPrivacyModalOpen(true)}
+                  className="font-medium text-indigo-600 hover:text-indigo-500 underline"
+                >
+                  Privacy Policy
+                </button>
               </label>
             </div>
 
@@ -406,15 +553,26 @@ function RegisterForm() {
                     Creating Account...
                   </>
                 ) : (
-                  'Create Account'
+                      'Create Student Account'
                 )}
               </button>
             </div>
           </form>
+          )}
         </div>
       </div>
       
       <Footer />
+      
+      <TermsModal
+        isOpen={isTermsModalOpen}
+        onClose={() => setIsTermsModalOpen(false)}
+      />
+      
+      <PrivacyModal
+        isOpen={isPrivacyModalOpen}
+        onClose={() => setIsPrivacyModalOpen(false)}
+      />
     </div>
   );
 }

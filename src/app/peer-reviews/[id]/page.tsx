@@ -104,7 +104,8 @@ export default function PeerReview() {
         const submissionId = reviewData.submissionId;
         
         // Then fetch the submission details with attachments
-        const submissionResponse = await fetch(`/api/submissions/${submissionId}?userId=${userId}`);
+        const userRole = localStorage.getItem('userRole');
+        const submissionResponse = await fetch(`/api/submissions/${submissionId}?userId=${userId}&role=${userRole}`);
         if (!submissionResponse.ok) {
           throw new Error('Failed to fetch submission details');
         }

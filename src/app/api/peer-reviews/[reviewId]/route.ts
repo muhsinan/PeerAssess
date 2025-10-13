@@ -27,6 +27,8 @@ export async function GET(
         pr.total_score as "totalScore",
         pr.assigned_date as "assignedDate",
         pr.completed_date as "completedDate",
+        pr.is_ai_generated as "isAiGenerated",
+        pr.ai_feedback_synthesis as "aiSynthesis",
         s.title as "submissionTitle",
         a.assignment_id as "assignmentId",
         a.title as "assignmentTitle"

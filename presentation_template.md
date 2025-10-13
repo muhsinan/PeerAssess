@@ -1,4 +1,4 @@
-# PeerAssess: AI-Powered Peer Assessment Tool
+# Peercept: AI-Powered Peer Assessment Tool
 ## Project Presentation Template
 
 ---
@@ -23,7 +23,7 @@
 
 ## 🎯 Project Overview
 
-**PeerAssess** is a modern web application designed to revolutionize peer assessment in educational settings by combining intuitive user interfaces with AI-powered assistance.
+**Peercept** is a modern web application designed to revolutionize peer assessment in educational settings by combining intuitive user interfaces with AI-powered assistance.
 
 ### Problem Statement
 - Traditional peer assessment methods are often inconsistent and lack constructive feedback
@@ -445,7 +445,7 @@ Our PostgreSQL database uses a dedicated `peer_assessment` schema with 10 interc
 
 ## 🎯 Conclusion
 
-**PeerAssess** represents a successful integration of modern web technologies, cloud infrastructure, and artificial intelligence to solve real educational challenges. The project demonstrates:
+**Peercept** represents a successful integration of modern web technologies, cloud infrastructure, and artificial intelligence to solve real educational challenges. The project demonstrates:
 
 - **Technical proficiency** in full-stack development
 - **Cloud deployment** expertise with Google Cloud Platform

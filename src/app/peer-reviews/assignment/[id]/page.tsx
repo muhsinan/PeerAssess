@@ -149,7 +149,9 @@ export default function AssignmentPeerReviewPage() {
         setSubmissions(submissionsData.submissions || []);
 
         // Fetch all peer reviews for this assignment
-        const peerReviewsRes = await fetch(`/api/assignments/${assignmentId}/peer-reviews`);
+        const currentUserId = localStorage.getItem('userId');
+        const currentUserRole = localStorage.getItem('userRole');
+        const peerReviewsRes = await fetch(`/api/assignments/${assignmentId}/peer-reviews?userId=${currentUserId}&role=${currentUserRole}`);
         if (!peerReviewsRes.ok) {
           throw new Error('Failed to fetch peer reviews');
         }
@@ -390,8 +392,7 @@ export default function AssignmentPeerReviewPage() {
               <h3 className="text-sm font-medium text-blue-800">Peer Review Assignment</h3>
               <div className="mt-2 text-sm text-blue-700">
                 <p>
-                  You can now assign peer reviews to all enrolled students, even if they haven't submitted their work yet. 
-                  This allows for more flexible assignment scheduling and ensures all students can participate in the peer review process.
+                  You can assign peer reviews to all enrolled students, even if they haven't submitted their work yet. 
                 </p>
                 <p className="mt-2">
                   <strong>How it works:</strong> Use "Auto-Assign" to automatically distribute submissions among all enrolled students, 

@@ -161,7 +161,7 @@ export async function POST(
            (criterion_id, description, points, order_position) 
            VALUES ($1, $2, $3, $4) 
            RETURNING level_id, description, points, order_position`,
-          [criterionId, level.description || '', level.points || 0, i + 1]
+          [criterionId, level.description || '', level.score || 0, i + 1]
         );
         savedLevels.push({
           id: levelResult.rows[0].level_id,

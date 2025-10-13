@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{subject}}</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      color: #7c3aed;
+      margin: 0;
+      font-size: 28px;
+    }
+    .header p {
+      color: #666;
+      margin: 5px 0 0 0;
+      font-size: 14px;
+    }
+    .subject-line {
+      background-color: #f8fafc;
+      padding: 20px;
+      border-radius: 6px;
+      border-left: 4px solid #7c3aed;
+      margin-bottom: 25px;
+    }
+    .subject-line h2 {
+      color: #7c3aed;
+      margin: 0 0 10px 0;
+      font-size: 20px;
+    }
+    .content {
+      color: #4a5568;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      white-space: pre-line;
+    }
+    .html-content {
+      color: #4a5568;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .signature {
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 20px;
+      margin-top: 20px;
+    }
+    .signature p {
+      color: #a0aec0;
+      font-size: 12px;
+      margin: 0;
+    }
+    /* Responsive styles */
+    @media (max-width: 600px) {
+      .container {
+        margin: 10px;
+        padding: 15px;
+      }
+      .header h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{from_name}}</h1>
+      <p>Academic Peer Review Platform</p>
+    </div>
+    
+    <div class="subject-line">
+      <h2>{{subject}}</h2>
+    </div>
+    
+    <!-- Use either message (plain text) or html_message (formatted HTML) -->
+    <!-- Plain text content -->
+    <div class="content">{{message}}</div>
+    
+    <!-- OR HTML content (if you want to use rich formatting) -->
+    <!-- <div class="html-content">{{{html_message}}}</div> -->
+    
+    <div class="signature">
+      <p>
+        Best regards,<br>
+        <strong>{{from_name}} Team</strong>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

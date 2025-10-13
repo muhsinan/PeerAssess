@@ -120,7 +120,7 @@ export default function Features() {
               <span className="block text-indigo-300">Modern Assessment</span>
             </h1>
             <p className="mt-6 max-w-3xl mx-auto text-xl leading-8 text-gray-100">
-              Discover how PeerAssess combines cutting-edge technology with intuitive design to create 
+              Discover how Peercept combines cutting-edge technology with intuitive design to create 
               the ultimate peer assessment experience for educators and students.
             </p>
           </div>
@@ -155,60 +155,11 @@ export default function Features() {
         </div>
       </div>
 
-      {/* Technology Stack Section */}
-      <div className="py-16 bg-gray-50 sm:py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="lg:text-center">
-            <h2 className="text-lg font-semibold text-indigo-600">Technology Stack</h2>
-            <p className="mt-2 text-3xl font-bold leading-8 tracking-tight text-gray-900 sm:text-4xl">
-              Built with Modern Technologies
-            </p>
-            <p className="mt-4 max-w-2xl text-xl text-gray-500 lg:mx-auto">
-              PeerAssess leverages cutting-edge technologies to deliver a fast, secure, and scalable platform.
-            </p>
-          </div>
-
-          <div className="mt-16">
-            <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-              <div className="text-center">
-                <div className="mx-auto h-16 w-16 rounded-lg bg-indigo-600 text-white flex items-center justify-center mb-4">
-                  <span className="font-bold text-lg">N</span>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900">Next.js 15</h3>
-                <p className="text-gray-500">React Framework</p>
-              </div>
-              <div className="text-center">
-                <div className="mx-auto h-16 w-16 rounded-lg bg-blue-600 text-white flex items-center justify-center mb-4">
-                  <span className="font-bold text-lg">TS</span>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900">TypeScript</h3>
-                <p className="text-gray-500">Type Safety</p>
-              </div>
-              <div className="text-center">
-                <div className="mx-auto h-16 w-16 rounded-lg bg-green-600 text-white flex items-center justify-center mb-4">
-                  <span className="font-bold text-lg">PG</span>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900">PostgreSQL</h3>
-                <p className="text-gray-500">Database</p>
-              </div>
-              <div className="text-center">
-                <div className="mx-auto h-16 w-16 rounded-lg bg-cyan-600 text-white flex items-center justify-center mb-4">
-                  <span className="font-bold text-lg">TW</span>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900">Tailwind CSS</h3>
-                <p className="text-gray-500">Styling</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* CTA Section */}
       <div className="bg-indigo-800">
         <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:py-16 lg:px-8 lg:flex lg:items-center lg:justify-between">
           <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             <span className="block">Ready to get started?</span>
-            <span className="block text-indigo-300">Join thousands of educators today.</span>
           </h2>
           <div className="mt-8 flex lg:mt-0 lg:flex-shrink-0">
             <div className="inline-flex rounded-md shadow">
