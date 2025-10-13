@@ -43,6 +43,6 @@ next-env.d.ts
 
 .sh
 
-.sql
+*.sql
 
-.md
+*.md
