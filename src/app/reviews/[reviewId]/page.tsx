@@ -6,6 +6,8 @@ import Link from 'next/link';
 import RubricForm from '../../../components/review/RubricForm';
 import AIReviewAnalysis from '../../../components/review/AIReviewAnalysis';
 import Layout from '../../../components/layout/Layout';
+import ChatWidget from '../../../components/chat/ChatWidget';
+import ChatButton from '../../../components/chat/ChatButton';
 
 interface RubricCriterion {
   id: number;
@@ -15,7 +17,7 @@ interface RubricCriterion {
   levels?: Array<{
     id: number;
     description: string;
-    points: number;
+    score: number;
     orderPosition: number;
   }>;
 }
@@ -31,6 +33,7 @@ interface Review {
   overallFeedback?: string;
   totalScore?: number;
   scores?: any[];
+  aiSynthesis?: string;
 }
 
 interface Submission {
@@ -41,6 +44,7 @@ interface Submission {
   studentId?: number;
   assignmentTitle: string;
   courseName: string;
+  ai_submission_analysis?: string;
   attachments?: Array<{
     id: number;
     fileName: string;
@@ -58,11 +62,13 @@ interface CriterionScore {
 }
 
 // Component for viewing a completed review as feedback
-function ViewReviewFeedback({ review, submission, rubricCriteria }: { 
+function ViewReviewFeedback({ review, submission, rubricCriteria, currentUserId }: { 
   review: Review; 
   submission: Submission; 
   rubricCriteria: RubricCriterion[];
+  currentUserId: number;
 }) {
+  const [isChatVisible, setIsChatVisible] = useState<boolean>(false);
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -88,6 +94,15 @@ function ViewReviewFeedback({ review, submission, rubricCriteria }: {
                 <p className="mt-2 max-w-4xl text-sm text-black">
                   Assignment: {submission?.assignmentTitle} | Course: {submission?.courseName}
                 </p>
+                {/* Big, obvious chat opener for feedback receiver */}
+                <div className="mt-4">
+                  <button
+                    onClick={() => setIsChatVisible(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold text-sm"
+                  >
+                    💬 Open Chat
+                  </button>
+                </div>
               </div>
               <div className="mt-4 md:mt-0 bg-indigo-50 p-3 rounded-lg text-center">
                 <p className="text-sm font-medium text-indigo-800">Total Score</p>
@@ -108,70 +123,101 @@ function ViewReviewFeedback({ review, submission, rubricCriteria }: {
 
           {/* Review Content */}
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Overall Feedback */}
-            <div className="lg:col-span-3">
-              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                <div className="px-4 py-5 sm:px-6 bg-indigo-50">
-                  <h3 className="text-lg leading-6 font-medium text-indigo-800">
-                    Overall Feedback
-                  </h3>
-                </div>
-                <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-                  <div className="prose max-w-none text-black">
-                    {review.overallFeedback || 'No overall feedback provided.'}
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Criteria Feedback */}
-            {rubricCriteria.length > 0 && (
+            {/* Overall Feedback */}
+            {review.overallFeedback && (
               <div className="lg:col-span-3">
                 <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                  <div className="px-4 py-5 sm:px-6 bg-indigo-50">
-                    <h3 className="text-lg leading-6 font-medium text-indigo-800">
-                      Detailed Feedback
+                  <div className="px-4 py-5 sm:px-6 bg-green-50">
+                    <h3 className="text-lg leading-6 font-medium text-green-800 flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-1l-4 4z" />
+                      </svg>
+                      Overall Feedback
                     </h3>
+                    <p className="mt-1 text-sm text-green-600">
+                      Comprehensive review comments and overall assessment
+                    </p>
                   </div>
-                  <div className="border-t border-gray-200">
-                    <dl className="divide-y divide-gray-200">
-                      {rubricCriteria.map((criterion) => {
-                        const criterionScore = review.scores?.find((s: any) => s.criterionId === criterion.id);
-                        return (
-                          <div key={criterion.id} className="px-4 py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:px-6">
-                            <dt className="text-sm font-medium text-black">
-                              <div>{criterion.name}</div>
-                              <div className="mt-1 text-xs text-gray-500">{criterion.description}</div>
-                              <div className="mt-2">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                  Score: {criterionScore?.score || 0}/{criterion.maxPoints}
-                                </span>
-                              </div>
-                            </dt>
-                            <dd className="mt-1 text-sm text-black sm:mt-0 sm:col-span-3">
-                              {criterionScore?.feedback || 'No specific feedback provided for this criterion.'}
-                            </dd>
-                          </div>
-                        );
-                      })}
-                    </dl>
+                  <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
+                    <div className="prose max-w-none text-black">
+                      {review.overallFeedback}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Back button */}
-            <div className="lg:col-span-3 flex justify-center mt-6">
+            {/* Detailed Feedback */}
+            <div className="lg:col-span-3">
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div className="px-4 py-5 sm:px-6 bg-indigo-50">
+                  <h3 className="text-lg leading-6 font-medium text-indigo-800">
+                    Detailed Feedback
+                  </h3>
+                  <p className="mt-1 text-sm text-indigo-600">
+                    Feedback and scores for individual criteria
+                  </p>
+                </div>
+                <div className="border-t border-gray-200">
+                  <dl className="divide-y divide-gray-200">
+                    {/* Criteria-specific feedback */}
+                    {rubricCriteria.length > 0 ? rubricCriteria.map((criterion) => {
+                      const criterionScore = review.scores?.find((s: any) => s.criterionId === criterion.id);
+                      return (
+                        <div key={criterion.id} className="px-4 py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:px-6">
+                          <dt className="text-sm font-medium text-black">
+                            <div>{criterion.name}</div>
+                            <div className="mt-1 text-xs text-gray-500">{criterion.description}</div>
+                            <div className="mt-2">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                Score: {criterionScore?.score || 0}/{criterion.maxPoints}
+                              </span>
+                            </div>
+                          </dt>
+                          <dd className="mt-1 text-sm text-black sm:mt-0 sm:col-span-3">
+                            {criterionScore?.feedback || 'No specific feedback provided for this criterion.'}
+                          </dd>
+                        </div>
+                      );
+                    }) : (
+                      <div className="px-4 py-5 sm:px-6 text-center text-gray-500">
+                        No detailed criteria feedback available for this review.
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            {/* Back button and Chat button */}
+            <div className="lg:col-span-3 flex justify-center items-center space-x-3 mt-6">
               <Link
                 href="/dashboard"
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Return to Dashboard
               </Link>
+              {currentUserId && (
+                <ChatButton
+                  reviewId={review.id}
+                  currentUserId={currentUserId}
+                  onChatOpen={() => setIsChatVisible(true)}
+                />
+              )}
             </div>
           </div>
         </div>
       </div>
+      {/* Chat Widget for feedback receiver */}
+      {currentUserId && (
+        <ChatWidget
+          reviewId={review.id}
+          currentUserId={currentUserId}
+          isVisible={isChatVisible}
+          onClose={() => setIsChatVisible(false)}
+        />
+      )}
     </div>
   );
 }
@@ -196,6 +242,7 @@ export default function ReviewPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'submission' | 'review'>('submission');
   const [submitted, setSubmitted] = useState(false);
+  
   
   // Fetch review data
   useEffect(() => {
@@ -222,7 +269,8 @@ export default function ReviewPage() {
         setReview(reviewData.review);
         
         // Fetch submission details
-        const submissionResponse = await fetch(`/api/submissions/${reviewData.review.submissionId}?userId=${userIdFromStorage}`);
+        const userRole = localStorage.getItem('userRole');
+        const submissionResponse = await fetch(`/api/submissions/${reviewData.review.submissionId}?userId=${userIdFromStorage}&role=${userRole}`);
         if (!submissionResponse.ok) {
           throw new Error('Failed to fetch submission details');
         }
@@ -230,18 +278,42 @@ export default function ReviewPage() {
         const submissionData = await submissionResponse.json();
         setSubmission(submissionData.submission);
         
+        // Check if reviewer has submitted their own assignment (only for students who are reviewers)
+        if (role === 'student' && 
+            reviewData.review.reviewerId.toString() === userIdFromStorage && 
+            reviewData.review.status !== 'completed') {
+          
+          // Check if the reviewer has submitted their assignment
+          const reviewerSubmissionResponse = await fetch(
+            `/api/assignments/${submissionData.submission.assignmentId}/submissions?studentId=${userIdFromStorage}`
+          );
+          
+          if (reviewerSubmissionResponse.ok) {
+            const reviewerSubmissionData = await reviewerSubmissionResponse.json();
+            
+            // If reviewer hasn't submitted their assignment, redirect them
+            if (!reviewerSubmissionData.submissions || reviewerSubmissionData.submissions.length === 0) {
+              setError('You must submit your assignment before you can review peers. Please submit your assignment first.');
+              setTimeout(() => {
+                router.push(`/assignments/${submissionData.submission.assignmentId}`);
+              }, 3000);
+              return;
+            }
+          }
+        }
+        
         // Determine view mode based on role and review properties
         // Case 1: Student is viewing feedback they received (they are the submission owner)
-        // Case 2: Student is doing a review (they are the reviewer)
+        // Case 2: Student is reviewing and wants to chat about completed review (they are the reviewer)
+        // Case 3: Instructor viewing any review
         if (
           // Student viewing feedback on their own submission
           (role === 'student' && 
            submissionData.submission.studentId?.toString() === userIdFromStorage) ||
           // Instructor viewing any review
           (role === 'instructor') ||
-          // Student viewing a completed review
-          (role === 'student' && reviewData.review.status === 'completed' && 
-           reviewData.review.reviewerId.toString() !== userIdFromStorage)
+          // Student viewing a completed review (either as reviewer or reviewee)
+          (role === 'student' && reviewData.review.status === 'completed')
         ) {
           setViewMode(true);
         } else if (role === 'student' && reviewData.review.reviewerId.toString() !== userIdFromStorage) {
@@ -548,6 +620,7 @@ export default function ReviewPage() {
           review={review} 
           submission={submission}
           rubricCriteria={rubricCriteria}
+          currentUserId={parseInt(userId || '0')}
         />
       </Layout>
     );
@@ -604,6 +677,8 @@ export default function ReviewPage() {
                 <h1 className="text-2xl font-bold leading-7 text-black sm:text-3xl sm:truncate">
                   Peer Review: {submission?.assignmentTitle}
                 </h1>
+                
+                
                 <p className="mt-2 max-w-4xl text-sm text-black">
                   By: {submission?.studentName} | Course: {submission?.courseName} | Submitted: {new Date(review?.assignedDate || '').toLocaleDateString()}
                 </p>
@@ -756,6 +831,7 @@ export default function ReviewPage() {
                         aiOverallPrompt: assignment?.aiOverallPrompt,
                         aiCriteriaPrompt: assignment?.aiCriteriaPrompt
                       }}
+                      submissionAnalysis={submission?.ai_submission_analysis}
                       onAIFeedbackSelect={handleAIFeedbackSelect}
                       onAIOverallFeedbackSelect={handleAIOverallFeedbackSelect}
                     />
@@ -830,6 +906,8 @@ export default function ReviewPage() {
           </div>
         </div>
       </div>
+      
+
     </Layout>
   );
 } 

@@ -64,6 +64,10 @@ function StudentPeerReviews({ userId }: { userId: string }) {
     );
   }
 
+  // Split assigned reviews into to-do and completed (given feedback)
+  const toComplete = assignedReviews.filter((r) => r.status !== 'completed');
+  const completedGiven = assignedReviews.filter((r) => r.status === 'completed');
+
   return (
     <div className="py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -73,10 +77,10 @@ function StudentPeerReviews({ userId }: { userId: string }) {
         {/* Reviews to Complete */}
         <div className="mt-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Reviews to Complete</h2>
-          {assignedReviews.length > 0 ? (
+          {toComplete.length > 0 ? (
             <div className="bg-white shadow overflow-hidden sm:rounded-md">
               <ul className="divide-y divide-gray-200">
-                {assignedReviews.map((review) => (
+                {toComplete.map((review) => (
                   <li key={review.id}>
                     <div className="px-4 py-4 sm:px-6">
                       <div className="flex items-center justify-between">
@@ -100,12 +104,32 @@ function StudentPeerReviews({ userId }: { userId: string }) {
                             {review.status === 'in_progress' ? 'In Progress' : review.status}
                           </span>
                           {review.status !== 'completed' && (
-                            <Link
-                              href={`/reviews/${review.id}`}
-                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                            >
-                              {review.status === 'in_progress' ? 'Continue Review' : 'Start Review'}
-                            </Link>
+                            <>
+                              {review.reviewerHasSubmitted ? (
+                                <Link
+                                  href={`/reviews/${review.id}`}
+                                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                                >
+                                  {review.status === 'in_progress' ? 'Continue Review' : 'Start Review'}
+                                </Link>
+                              ) : (
+                                <div className="flex flex-col items-end space-y-2">
+                                  <button
+                                    disabled
+                                    className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md shadow-sm text-gray-500 bg-gray-100 cursor-not-allowed"
+                                    title="You must submit your assignment first before reviewing peers"
+                                  >
+                                    Submit Assignment First
+                                  </button>
+                                  <Link
+                                    href={`/assignments/${review.assignmentId}`}
+                                    className="inline-flex items-center px-2 py-1 border border-blue-300 text-xs leading-4 font-medium rounded text-blue-600 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                  >
+                                    Go to Assignment
+                                  </Link>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -121,6 +145,51 @@ function StudentPeerReviews({ userId }: { userId: string }) {
           )}
         </div>
 
+        {/* Reviews Completed (Given Feedback) */}
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Reviews Completed (Given Feedback)</h2>
+          {completedGiven.length > 0 ? (
+            <div className="bg-white shadow overflow-hidden sm:rounded-md">
+              <ul className="divide-y divide-gray-200">
+                {completedGiven.map((review) => (
+                  <li key={review.id}>
+                    <div className="px-4 py-4 sm:px-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <h3 className="text-lg font-medium text-black">{review.submissionTitle}</h3>
+                          <p className="text-sm text-gray-500">Assignment: {review.assignmentTitle}</p>
+                          <p className="text-sm text-gray-500">Course: {review.courseName}</p>
+                          <p className="text-sm text-gray-500">
+                            Completed: {new Date(review.completedDate).toLocaleDateString()}
+                          </p>
+                          {review.totalScore && (
+                            <p className="text-sm text-gray-500">Score: {review.totalScore}</p>
+                          )}
+                        </div>
+                        <div className="ml-2 flex-shrink-0 flex items-center space-x-2">
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                            completed
+                          </span>
+                          <Link
+                            href={`/reviews/${review.id}`}
+                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            View Given Feedback
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="bg-white shadow rounded-lg p-6">
+              <p className="text-center text-gray-500">No completed reviews yet</p>
+            </div>
+          )}
+        </div>
+
         {/* Feedback Received */}
         <div className="mt-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Feedback Received</h2>
@@ -128,35 +197,79 @@ function StudentPeerReviews({ userId }: { userId: string }) {
             <div className="bg-white shadow overflow-hidden sm:rounded-md">
               <ul className="divide-y divide-gray-200">
                 {receivedFeedback.map((feedback) => (
-                  <li key={feedback.id}>
+                  <li key={feedback.submissionId || feedback.id}>
                     <div className="px-4 py-4 sm:px-6">
                       <div className="flex items-center justify-between">
                         <div className="flex flex-col">
                           <h3 className="text-lg font-medium text-black">{feedback.submissionTitle}</h3>
                           <p className="text-sm text-gray-500">Assignment: {feedback.assignmentTitle}</p>
                           <p className="text-sm text-gray-500">Course: {feedback.courseName}</p>
-                          <p className="text-sm text-gray-500">Reviewer: {feedback.reviewerName}</p>
-                          <p className="text-sm text-gray-500">
-                            Completed: {new Date(feedback.completedDate).toLocaleDateString()}
-                          </p>
-                          {feedback.totalScore && (
-                            <p className="text-sm text-gray-500">Score: {feedback.totalScore}</p>
+                          {feedback.reviewCount ? (
+                            <>
+                              <p className="text-sm text-gray-500">
+                                Latest Review: {new Date(feedback.latestCompletedDate).toLocaleDateString()}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Reviews: {feedback.reviewCount} | Average Score: {feedback.averageScore?.toFixed(1) || 'N/A'}
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm text-gray-500">Reviewer: {feedback.reviewerName}</p>
+                              <p className="text-sm text-gray-500">
+                                Completed: {new Date(feedback.completedDate).toLocaleDateString()}
+                              </p>
+                              {feedback.totalScore && (
+                                <p className="text-sm text-gray-500">Score: {feedback.totalScore}</p>
+                              )}
+                            </>
                           )}
                         </div>
                         <div className="ml-2 flex-shrink-0">
                           <Link
-                            href={`/reviews/${feedback.id}`}
+                            href={feedback.submissionId ? `/submissions/${feedback.submissionId}/feedback` : `/reviews/${feedback.id}`}
                             className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                           >
-                            View Feedback
+                            {feedback.reviewCount > 1 ? 'View All Feedback' : 'View Feedback'}
                           </Link>
                         </div>
                       </div>
-                      {feedback.overallFeedback && (
+                      
+                      {/* Show aggregated synthesis if multiple reviews exist */}
+                      {feedback.reviewCount > 1 && feedback.aggregatedSynthesis && (
+                        <div className="mt-4">
+                          <div className="text-sm text-gray-700 bg-gradient-to-r from-purple-50 to-indigo-50 border-l-4 border-purple-400 p-4 rounded-lg">
+                            <p className="font-medium text-purple-800 flex items-center mb-2">
+                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Combined Feedback Synthesis ({feedback.reviewCount} reviews):
+                            </p>
+                            <p className="text-gray-800 leading-relaxed">
+                              {feedback.aggregatedSynthesis}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Show individual feedback summary if only one review or old format */}
+                      {((feedback.reviewCount === 1 && feedback.reviews && feedback.reviews[0]) || 
+                        (!feedback.reviewCount && (feedback.aiSynthesis || feedback.overallFeedback))) && (
                         <div className="mt-2">
-                          <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
-                            {feedback.overallFeedback}
-                          </p>
+                          <div className="text-sm text-gray-700 bg-purple-50 border-l-4 border-purple-400 p-3 rounded">
+                            <p className="font-medium text-purple-800 flex items-center mb-1">
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-1l-4 4z" />
+                              </svg>
+                              Feedback Summary:
+                            </p>
+                            <p className="text-gray-800">
+                              {feedback.reviewCount === 1 && feedback.reviews 
+                                ? (feedback.reviews[0].aiSynthesis || feedback.reviews[0].overallFeedback || 'No feedback available')
+                                : (feedback.aiSynthesis || feedback.overallFeedback)
+                              }
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>

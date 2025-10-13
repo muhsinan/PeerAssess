@@ -190,6 +190,67 @@ export default function CourseDetailsClient({ courseId }: { courseId: string }) 
               </div>
             </div>
             
+            {/* Course Management Section - Only for instructors */}
+            {userRole === 'instructor' && (
+              <div className="mt-8 bg-white shadow overflow-hidden sm:rounded-lg">
+                <div className="px-4 py-5 sm:px-6 bg-purple-50">
+                  <h3 className="text-lg leading-6 font-medium text-purple-800">Course Management</h3>
+                  <p className="mt-1 max-w-2xl text-sm text-gray-500">Manage students, assignments, and enrollment requests</p>
+                </div>
+                <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Link
+                      href={`/courses/${courseId}/students`}
+                      className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
+                    >
+                      <div className="flex-shrink-0">
+                        <svg className="h-10 w-10 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="absolute inset-0" aria-hidden="true" />
+                        <p className="text-sm font-medium text-gray-900">Manage Students</p>
+                        <p className="text-sm text-gray-500">Add or remove students from this course</p>
+                      </div>
+                    </Link>
+
+                    <Link
+                      href={`/courses/${courseId}/pending-enrollments`}
+                      className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
+                    >
+                      <div className="flex-shrink-0">
+                        <svg className="h-10 w-10 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="absolute inset-0" aria-hidden="true" />
+                        <p className="text-sm font-medium text-gray-900">Pending Enrollments</p>
+                        <p className="text-sm text-gray-500">Review and approve enrollment requests</p>
+                      </div>
+                    </Link>
+
+                    <Link
+                      href={`/assignments/create?courseId=${courseId}`}
+                      className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
+                    >
+                      <div className="flex-shrink-0">
+                        <svg className="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="absolute inset-0" aria-hidden="true" />
+                        <p className="text-sm font-medium text-gray-900">Create Assignment</p>
+                        <p className="text-sm text-gray-500">Add a new assignment to this course</p>
+                      </div>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {/* Assignments Section */}
             <div className="mt-8 bg-white shadow overflow-hidden sm:rounded-lg">
               <div className="px-4 py-5 sm:px-6 bg-purple-50">

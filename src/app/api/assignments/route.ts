@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Parse request body
-    const { title, description, courseId, dueDate, aiPromptsEnabled, aiOverallPrompt, aiCriteriaPrompt } = await request.json();
+    const { title, description, courseId, dueDate, rubricId, aiPromptsEnabled, aiOverallPrompt, aiCriteriaPrompt, aiInstructorEnabled, aiInstructorPrompt, feedbackChatType } = await request.json();
     
     // Validate input
     if (!title || !title.trim()) {
@@ -116,13 +116,36 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // Validate rubric if provided
+    if (rubricId && (isNaN(parseInt(String(rubricId))) || parseInt(String(rubricId)) <= 0)) {
+      return NextResponse.json(
+        { error: 'Invalid rubric ID' },
+        { status: 400 }
+      );
+    }
+
+    // If rubric is provided, check that it exists
+    if (rubricId) {
+      const rubricCheck = await pool.query(
+        'SELECT rubric_id FROM peer_assessment.rubrics WHERE rubric_id = $1',
+        [rubricId]
+      );
+      
+      if (rubricCheck.rows.length === 0) {
+        return NextResponse.json(
+          { error: 'Rubric not found' },
+          { status: 404 }
+        );
+      }
+    }
+
     // Insert assignment into database
     const result = await pool.query(
       `INSERT INTO peer_assessment.assignments
-        (title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt) 
+        (title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, ai_instructor_enabled, ai_instructor_prompt, feedback_chat_type) 
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7) 
-       RETURNING assignment_id, title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, created_at, updated_at`,
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+       RETURNING assignment_id, title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, ai_instructor_enabled, ai_instructor_prompt, feedback_chat_type, created_at, updated_at`,
       [
         title.trim(), 
         description?.trim() || null, 
@@ -130,11 +153,22 @@ export async function POST(request: NextRequest) {
         new Date(dueDate + 'T23:59:59'),
         aiPromptsEnabled ?? true,
         aiOverallPrompt?.trim() || null,
-        aiCriteriaPrompt?.trim() || null
+        aiCriteriaPrompt?.trim() || null,
+        aiInstructorEnabled ?? true,
+        aiInstructorPrompt?.trim() || null,
+        feedbackChatType || 'ai'
       ]
     );
     
     const newAssignment = result.rows[0];
+    
+    // If rubric was provided, create the assignment-rubric association
+    if (rubricId) {
+      await pool.query(
+        'INSERT INTO peer_assessment.assignment_rubrics (assignment_id, rubric_id) VALUES ($1, $2)',
+        [newAssignment.assignment_id, rubricId]
+      );
+    }
     
     // Get course details
     const courseDetails = await pool.query(
@@ -168,6 +202,10 @@ export async function POST(request: NextRequest) {
         aiPromptsEnabled: newAssignment.ai_prompts_enabled,
         aiOverallPrompt: newAssignment.ai_overall_prompt,
         aiCriteriaPrompt: newAssignment.ai_criteria_prompt,
+        aiInstructorEnabled: newAssignment.ai_instructor_enabled,
+        aiInstructorPrompt: newAssignment.ai_instructor_prompt,
+        feedbackChatType: newAssignment.feedback_chat_type,
+        rubricId: rubricId || null,
         submissionsCount: 0,
         totalStudents: 0,
         createdAt: newAssignment.created_at,

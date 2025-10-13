@@ -27,7 +27,9 @@ export async function GET(
         s.submission_date,
         s.status,
         s.assignment_id,
+        s.ai_submission_analysis,
         a.title as assignment_title,
+        a.ai_prompts_enabled,
         a.course_id,
         c.name as course_name,
         s.student_id,
@@ -106,17 +108,39 @@ export async function GET(
       }
     }
 
+    // Get user ID and role from query parameters to determine what data to return
+    const { searchParams: reviewSearchParams } = new URL(request.url);
+    const requestUserId = reviewSearchParams.get('userId');
+    const requestUserRole = reviewSearchParams.get('role');
+
+    // Determine if we should show real names (for instructors) or anonymous (for students)
+    let showRealNames = false;
+    if (requestUserId && requestUserRole === 'instructor') {
+      // Verify the user is actually an instructor
+      const userCheck = await pool.query(
+        'SELECT role FROM peer_assessment.users WHERE user_id = $1 AND role = $2',
+        [requestUserId, 'instructor']
+      );
+      showRealNames = userCheck.rows.length > 0;
+    }
+
     // Get reviews for this submission
+    // Hide reviewer identity for AI-generated reviews
     const reviewsResult = await pool.query(`
       SELECT 
         pr.review_id as id,
         pr.reviewer_id,
-        u.name as reviewer_name,
+        CASE 
+          WHEN $2 = true THEN u.name
+          ELSE 'Anonymous Reviewer'
+        END as reviewer_name,
         pr.overall_feedback,
         pr.total_score,
         pr.status,
         pr.assigned_date,
-        pr.completed_date
+        pr.completed_date,
+        pr.is_ai_generated,
+        pr.ai_feedback_synthesis
       FROM 
         peer_assessment.peer_reviews pr
       JOIN 
@@ -130,7 +154,7 @@ export async function GET(
           ELSE 3
         END,
         pr.assigned_date DESC
-    `, [submissionId]);
+    `, [submissionId, showRealNames]);
 
     const reviews = reviewsResult.rows;
 
@@ -162,6 +186,7 @@ export async function GET(
         status: submission.status,
         assignmentId: submission.assignment_id,
         assignmentTitle: submission.assignment_title,
+        aiPromptsEnabled: submission.ai_prompts_enabled,
         courseId: submission.course_id,
         courseName: submission.course_name,
         studentId: submission.student_id,

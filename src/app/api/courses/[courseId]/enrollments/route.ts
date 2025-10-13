@@ -145,7 +145,15 @@ export async function POST(
           userExists: false,
           invitationSent: true,
           email: email,
-          courseName: course.name
+          courseName: course.name,
+          // Include email data for EmailJS frontend sending
+          emailData: {
+            to: email,
+            subject: `Invitation to join ${course.name} on Peercept`,
+            instructor_name: course.instructor_name,
+            course_name: course.name,
+            invitation_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?invitation=${invitationToken}`
+          }
         });
       } catch (error) {
         console.error('Error sending invitation:', error);

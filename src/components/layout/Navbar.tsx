@@ -15,6 +15,7 @@ const navigation = {
     { name: 'My Assignments', href: '/my-assignments', current: false },
     { name: 'My Submissions', href: '/my-submissions', current: false },
     { name: 'Peer Reviews', href: '/peer-reviews', current: false },
+    { name: 'Enrollment Requests', href: '/my-enrollment-requests', current: false },
   ],
   instructor: [
     { name: 'Courses', href: '/courses', current: false },
@@ -34,6 +35,7 @@ export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [totalPendingCount, setTotalPendingCount] = useState(0);
   
   // Check localStorage for login state when component mounts
   useEffect(() => {
@@ -49,6 +51,28 @@ export default function Navbar() {
       }
     }
   }, []);
+
+  // Fetch pending enrollment counts for instructors
+  useEffect(() => {
+    const fetchPendingCounts = async () => {
+      if (userRole === 'instructor' && isLoggedIn) {
+        try {
+          const userId = localStorage.getItem('userId');
+          if (userId) {
+            const response = await fetch(`/api/instructors/pending-enrollments?instructorId=${userId}`);
+            if (response.ok) {
+              const data = await response.json();
+              setTotalPendingCount(data.totalPendingCount || 0);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching pending enrollment counts:', error);
+        }
+      }
+    };
+
+    fetchPendingCounts();
+  }, [userRole, isLoggedIn]);
   
   // Function to handle sign out
   const handleSignOut = () => {
@@ -110,7 +134,7 @@ export default function Navbar() {
           </div>
           <div className="flex flex-1 items-center justify-center sm:items-stretch sm:justify-start">
             <div className="flex flex-shrink-0 items-center">
-              <Link href="/" className="text-white text-xl font-bold">PeerAssess</Link>
+              <Link href="/" className="text-white text-xl font-bold">Peercept</Link>
             </div>
             <div className="hidden sm:ml-6 sm:block">
               <div className="flex space-x-4">
@@ -120,11 +144,16 @@ export default function Navbar() {
                     href={item.href}
                     className={classNames(
                       item.current ? 'bg-indigo-900 text-white' : 'text-indigo-100 hover:bg-indigo-700 hover:text-white',
-                      'rounded-md px-3 py-2 text-sm font-medium'
+                      'rounded-md px-3 py-2 text-sm font-medium flex items-center space-x-1'
                     )}
                     aria-current={item.current ? 'page' : undefined}
                   >
-                    {item.name}
+                    <span>{item.name}</span>
+                    {item.name === 'Courses' && userRole === 'instructor' && totalPendingCount > 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500 text-white">
+                        {totalPendingCount}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </div>

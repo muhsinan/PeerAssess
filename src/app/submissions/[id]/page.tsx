@@ -49,6 +49,7 @@ export default function ViewSubmission() {
     studentId: number;
     studentName: string;
     studentEmail: string;
+    ai_submission_analysis?: string;
     attachments: Array<{
       id: number;
       fileName: string;
@@ -92,7 +93,8 @@ export default function ViewSubmission() {
     try {
       setIsLoading(true);
       
-      const response = await fetch(`/api/submissions/${submissionId}${userId ? `?userId=${userId}` : ''}`);
+      const userRole = localStorage.getItem('userRole');
+      const response = await fetch(`/api/submissions/${submissionId}${userId ? `?userId=${userId}&role=${userRole}` : ''}`);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -436,6 +438,7 @@ export default function ViewSubmission() {
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </main>

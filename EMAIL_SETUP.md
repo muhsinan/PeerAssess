@@ -2,37 +2,73 @@
 
 ## Setting up Real Email Sending
 
-To enable real email sending for course invitations and password resets, you need to configure email credentials.
+To enable real email sending for course invitations and password resets, you can use one of three methods:
 
-### For Development (Local)
+1. **EmailJS (Recommended)** - Easy setup, works from the frontend
+2. **SendGrid** - Server-side email service  
+3. **Gmail** - Using Gmail SMTP with app passwords
+
+## Method 1: EmailJS Setup (Recommended)
+
+EmailJS is the easiest to set up and doesn't require server-side email configuration.
+
+### Step 1: Create EmailJS Account
+
+1. Go to [EmailJS.com](https://www.emailjs.com/) and create a free account
+2. Create a new email service (Gmail, Outlook, etc.)
+3. Create an email template
+4. Get your Service ID, Template ID, and Public Key
+
+### Step 2: Set up Environment Variables
 
 1. Create a `.env.local` file in your project root
 2. Add the following environment variables:
 
 ```bash
-# Email Configuration
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
+# EmailJS Configuration
+NEXT_PUBLIC_EMAILJS_SERVICE_ID=your_service_id
+NEXT_PUBLIC_EMAILJS_TEMPLATE_ID=your_template_id  
+NEXT_PUBLIC_EMAILJS_PUBLIC_KEY=your_public_key
 
 # App URL (for links in emails)
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### For Production (VM/Server)
+### Step 3: EmailJS Template Setup
 
-1. Create a `.env.production` file or set environment variables on your server
-2. Add the same variables with your production email credentials:
+Your EmailJS template should include these variables:
+- `{{to_email}}` - Recipient email
+- `{{to_name}}` - Recipient name (optional)
+- `{{from_name}}` - Sender name (Peercept)
+- `{{subject}}` - Email subject
+- `{{message}}` - Plain text message
+- `{{html_message}}` - HTML content (optional)
+
+### For Production
 
 ```bash
-# Email Configuration
-EMAIL_USER=your-production-email@gmail.com
-EMAIL_PASSWORD=your-production-app-password
+# EmailJS Configuration
+NEXT_PUBLIC_EMAILJS_SERVICE_ID=your_service_id
+NEXT_PUBLIC_EMAILJS_TEMPLATE_ID=your_template_id
+NEXT_PUBLIC_EMAILJS_PUBLIC_KEY=your_public_key
 
 # App URL (for links in emails)
 NEXT_PUBLIC_APP_URL=https://your-domain.com
 ```
 
-## Gmail Setup Instructions
+## Method 2: SendGrid Setup (Alternative)
+
+If you prefer server-side email sending:
+
+```bash
+# SendGrid Configuration
+SENDGRID_API_KEY=your_sendgrid_api_key
+
+# App URL (for links in emails)
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+## Method 3: Gmail Setup Instructions (Alternative)
 
 ### Step 1: Enable 2-Factor Authentication
 1. Go to [Google Account Settings](https://myaccount.google.com/)
@@ -52,9 +88,20 @@ EMAIL_USER=your-gmail@gmail.com
 EMAIL_PASSWORD=abcd efgh ijkl mnop  # The 16-character app password
 ```
 
+## Migration from SendGrid to EmailJS
+
+If you're currently using SendGrid and want to switch to EmailJS:
+
+1. **Install EmailJS**: Already done with `npm install @emailjs/browser`
+2. **Set up EmailJS account** as described in Method 1 above
+3. **Update environment variables** to use EmailJS instead of SendGrid
+4. **Remove SendGrid variables** from your environment files
+
+The system will automatically detect which email service is configured and use the appropriate method.
+
 ## Alternative Email Services
 
-If you prefer not to use Gmail, you can modify the `createTransporter` function in `src/lib/email.ts`:
+If you prefer not to use any of the above methods, you can modify the `createTransporter` function in `src/lib/email.ts`:
 
 ### SendGrid
 ```javascript

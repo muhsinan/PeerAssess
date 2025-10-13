@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { EmailJSProvider } from '@/components/EmailJSProvider';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PeerAssess - AI-Powered Peer Assessment Tool",
+  title: "Peercept - AI-Powered Peer Assessment Tool",
   description: "A modern platform for peer assessment and feedback in educational settings",
 };
 
@@ -27,7 +28,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <EmailJSProvider>
+          {children}
+        </EmailJSProvider>
       </body>
     </html>
   );

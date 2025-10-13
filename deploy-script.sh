@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# PeerAssess Deployment Script
+# Peercept Deployment Script
 # Run this script on your VM after transferring the project files
 
 set -e
 
-echo "🚀 Starting PeerAssess deployment..."
+echo "🚀 Starting Peercept deployment..."
 
 # Set project directory
 PROJECT_DIR="/var/www/peerassess"

@@ -43,6 +43,12 @@ CREATE TABLE assignments (
     description TEXT,
     course_id INTEGER REFERENCES courses(course_id) ON DELETE CASCADE,
     due_date TIMESTAMP WITH TIME ZONE,
+    feedback_chat_type VARCHAR(20) DEFAULT 'ai' CHECK (feedback_chat_type IN ('ai', 'peer')),
+    ai_overall_prompt TEXT,
+    ai_criteria_prompt TEXT,
+    ai_prompts_enabled BOOLEAN DEFAULT true,
+    ai_instructor_prompt TEXT,
+    ai_instructor_enabled BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -98,6 +104,7 @@ CREATE TABLE submissions (
     content TEXT NOT NULL,
     submission_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(20) DEFAULT 'submitted' CHECK (status IN ('draft', 'submitted', 'reviewed')),
+    ai_submission_analysis TEXT,
     UNIQUE(assignment_id, student_id)
 );
 
@@ -122,6 +129,10 @@ CREATE TABLE peer_reviews (
     status VARCHAR(20) DEFAULT 'assigned' CHECK (status IN ('assigned', 'in_progress', 'completed')),
     assigned_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed_date TIMESTAMP WITH TIME ZONE,
+    ai_feedback_synthesis TEXT,
+    is_ai_generated BOOLEAN DEFAULT false,
+    ai_model_used VARCHAR(50),
+    generated_by_instructor INTEGER REFERENCES users(user_id),
     UNIQUE(submission_id, reviewer_id)
 );
 
@@ -138,15 +149,31 @@ CREATE TABLE peer_review_scores (
 -- Indexes for performance
 CREATE INDEX idx_submissions_assignment_id ON submissions(assignment_id);
 CREATE INDEX idx_submissions_student_id ON submissions(student_id);
+CREATE INDEX idx_submissions_has_analysis ON submissions(ai_submission_analysis) WHERE ai_submission_analysis IS NOT NULL;
 CREATE INDEX idx_assignment_rubrics_assignment_id ON assignment_rubrics(assignment_id);
 CREATE INDEX idx_assignment_rubrics_rubric_id ON assignment_rubrics(rubric_id);
 CREATE INDEX idx_rubric_performance_levels_criterion_id ON rubric_performance_levels(criterion_id);
 CREATE INDEX idx_rubric_performance_levels_order ON rubric_performance_levels(criterion_id, order_position);
 CREATE INDEX idx_peer_reviews_submission_id ON peer_reviews(submission_id);
 CREATE INDEX idx_peer_reviews_reviewer_id ON peer_reviews(reviewer_id);
+CREATE INDEX idx_peer_reviews_has_synthesis ON peer_reviews(ai_feedback_synthesis) WHERE ai_feedback_synthesis IS NOT NULL;
+CREATE INDEX idx_peer_reviews_ai_generated ON peer_reviews(is_ai_generated);
 CREATE INDEX idx_peer_review_scores_review_id ON peer_review_scores(review_id);
 CREATE INDEX idx_course_enrollments_course_id ON course_enrollments(course_id);
 CREATE INDEX idx_course_enrollments_student_id ON course_enrollments(student_id);
+CREATE INDEX idx_assignments_chat_type ON assignments(feedback_chat_type);
+CREATE INDEX idx_password_reset_tokens_token ON password_reset_tokens(token);
+CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX idx_chat_conversations_review_id ON chat_conversations(review_id);
+CREATE INDEX idx_chat_conversations_participant1 ON chat_conversations(participant1_id);
+CREATE INDEX idx_chat_conversations_participant2 ON chat_conversations(participant2_id);
+CREATE INDEX idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC);
+CREATE INDEX idx_chat_conversations_ai ON chat_conversations(is_ai_conversation);
+CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id);
+CREATE INDEX idx_chat_messages_sender_id ON chat_messages(sender_id);
+CREATE INDEX idx_chat_messages_sent_at ON chat_messages(sent_at DESC);
+CREATE INDEX idx_chat_message_read_status_user_id ON chat_message_read_status(user_id);
+CREATE INDEX idx_chat_message_read_status_message_id ON chat_message_read_status(message_id);
 
 -- Course invitations table (for inviting students who aren't registered yet)
 CREATE TABLE course_invitations (
@@ -166,6 +193,96 @@ CREATE TABLE course_invitations (
 CREATE INDEX idx_course_invitations_course_id ON course_invitations(course_id);
 CREATE INDEX idx_course_invitations_email ON course_invitations(student_email);
 CREATE INDEX idx_course_invitations_token ON course_invitations(invitation_token);
+
+-- Password reset tokens table
+CREATE TABLE password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Chat conversations table 
+-- Represents a conversation between a reviewer and the submission owner
+CREATE TABLE chat_conversations (
+    conversation_id SERIAL PRIMARY KEY,
+    review_id INTEGER REFERENCES peer_reviews(review_id) ON DELETE CASCADE,
+    participant1_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE, -- Usually the submission owner
+    participant2_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE, -- Usually the reviewer (can be NULL for AI conversations)
+    is_ai_conversation BOOLEAN DEFAULT false,
+    ai_assistant_id INTEGER, -- Virtual ID for AI assistant (e.g., -1)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_message_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- Ensure unique conversation per review
+    UNIQUE(review_id)
+);
+
+-- Chat messages table
+CREATE TABLE chat_messages (
+    message_id SERIAL PRIMARY KEY,
+    conversation_id INTEGER REFERENCES chat_conversations(conversation_id) ON DELETE CASCADE,
+    sender_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    message_text TEXT NOT NULL,
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_read BOOLEAN DEFAULT FALSE,
+    message_type VARCHAR(20) DEFAULT 'text' CHECK (message_type IN ('text', 'system', 'ai_response', 'ai_suggestion')),
+    
+    -- For system messages and AI messages, sender_id can be NULL
+    CONSTRAINT check_sender_for_text_messages 
+        CHECK (
+            message_type = 'system' OR 
+            message_type = 'ai_response' OR 
+            message_type = 'ai_suggestion' OR
+            sender_id IS NOT NULL
+        )
+);
+
+-- Message read status tracking
+-- This helps track which messages each participant has read
+CREATE TABLE chat_message_read_status (
+    read_status_id SERIAL PRIMARY KEY,
+    message_id INTEGER REFERENCES chat_messages(message_id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    read_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id, user_id)
+);
+
+-- Function to update conversation's last_message_at when new message is added
+CREATE OR REPLACE FUNCTION update_conversation_last_message()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE peer_assessment.chat_conversations 
+    SET 
+        last_message_at = NEW.sent_at,
+        updated_at = NEW.sent_at
+    WHERE conversation_id = NEW.conversation_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to automatically update last_message_at
+CREATE TRIGGER trigger_update_conversation_last_message
+    AFTER INSERT ON chat_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION update_conversation_last_message();
+
+-- Comments for documentation
+COMMENT ON COLUMN assignments.feedback_chat_type IS 'Type of chat for feedback discussions: ai (default) or peer';
+COMMENT ON COLUMN assignments.ai_overall_prompt IS 'Custom AI prompt for overall feedback analysis';
+COMMENT ON COLUMN assignments.ai_criteria_prompt IS 'Custom AI prompt for criteria-specific feedback analysis';
+COMMENT ON COLUMN assignments.ai_prompts_enabled IS 'Whether AI analysis is enabled for this assignment';
+COMMENT ON COLUMN assignments.ai_instructor_prompt IS 'Custom AI prompt for instructor-generated peer reviews';
+COMMENT ON COLUMN assignments.ai_instructor_enabled IS 'Whether instructors can generate AI peer reviews for this assignment';
+COMMENT ON COLUMN submissions.ai_submission_analysis IS 'AI-generated analysis of submission quality against rubric criteria, providing initial feedback to students';
+COMMENT ON COLUMN peer_reviews.ai_feedback_synthesis IS 'AI-generated synthesis of detailed feedback and overall feedback highlighting main strengths and weaknesses';
+COMMENT ON COLUMN peer_reviews.is_ai_generated IS 'Whether this review was generated by AI';
+COMMENT ON COLUMN peer_reviews.ai_model_used IS 'AI model used for generation (e.g., gpt-4, gpt-3.5-turbo)';
+COMMENT ON COLUMN peer_reviews.generated_by_instructor IS 'Instructor who generated the AI review';
+COMMENT ON COLUMN chat_conversations.is_ai_conversation IS 'Whether this conversation is between a user and AI assistant';
+COMMENT ON COLUMN chat_conversations.ai_assistant_id IS 'Virtual ID for AI assistant participant (-1 for AI assistant)';
+COMMENT ON CONSTRAINT chat_messages_message_type_check ON chat_messages IS 'Allowed message types: text (user messages), system (system notifications), ai_response (AI chat responses), ai_suggestion (AI feedback improvement suggestions)';
 
 -- Sample data for testing
 
@@ -194,11 +311,11 @@ INSERT INTO course_enrollments (course_id, student_id) VALUES
 (4, 3); -- Batuhan in AI Fundamentals
 
 -- Create sample assignments
-INSERT INTO assignments (title, description, course_id, due_date) VALUES
-('Essay on Climate Change', 'Write a comprehensive essay on climate change and its global impact', 1, CURRENT_TIMESTAMP + INTERVAL '20 days'),
-('Research Paper: Artificial Intelligence Ethics', 'Research and analyze ethical considerations in AI development', 2, CURRENT_TIMESTAMP + INTERVAL '30 days'),
-('Literature Review: Modernism', 'Review key works of modernist literature and their impact', 1, CURRENT_TIMESTAMP + INTERVAL '15 days'),
-('Project Proposal: Renewable Energy', 'Develop a detailed project proposal for renewable energy implementation', 3, CURRENT_TIMESTAMP + INTERVAL '25 days');
+INSERT INTO assignments (title, description, course_id, due_date, feedback_chat_type, ai_prompts_enabled, ai_instructor_enabled) VALUES
+('Essay on Climate Change', 'Write a comprehensive essay on climate change and its global impact', 1, CURRENT_TIMESTAMP + INTERVAL '20 days', 'ai', true, true),
+('Research Paper: Artificial Intelligence Ethics', 'Research and analyze ethical considerations in AI development', 2, CURRENT_TIMESTAMP + INTERVAL '30 days', 'ai', true, true),
+('Literature Review: Modernism', 'Review key works of modernist literature and their impact', 1, CURRENT_TIMESTAMP + INTERVAL '15 days', 'peer', true, true),
+('Project Proposal: Renewable Energy', 'Develop a detailed project proposal for renewable energy implementation', 3, CURRENT_TIMESTAMP + INTERVAL '25 days', 'ai', true, true);
 
 -- Create rubrics for assignments
 INSERT INTO rubrics (name, description) VALUES

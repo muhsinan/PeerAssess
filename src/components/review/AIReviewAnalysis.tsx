@@ -22,6 +22,7 @@ interface AIReviewAnalysisProps {
     aiOverallPrompt?: string;
     aiCriteriaPrompt?: string;
   };
+  submissionAnalysis?: string;
   onAIFeedbackSelect: (criterionId: number, feedbackText: string) => void;
   onAIOverallFeedbackSelect: (feedbackText: string) => void;
 }
@@ -32,9 +33,16 @@ export default function AIReviewAnalysis({
   feedback,
   overallFeedback,
   assignment,
+  submissionAnalysis,
   onAIFeedbackSelect,
   onAIOverallFeedbackSelect
 }: AIReviewAnalysisProps) {
+  
+  // Don't render the component if AI prompts are disabled for this assignment
+  if (assignment.aiPromptsEnabled === false) {
+    return null;
+  }
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisGenerated, setAnalysisGenerated] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<{[key: number]: string[]}>({});
@@ -123,14 +131,27 @@ export default function AIReviewAnalysis({
       console.log('Is using custom prompt?', !!assignment.aiOverallPrompt);
       
       // Build the complete prompt with system context + instructor's custom instructions
-      const overallPrompt = `You are an AI assistant helping a student improve their peer review feedback.
+      let overallPrompt = `You are an AI assistant helping a student improve their peer review feedback.
 
 Assignment: ${assignment.title}
 Assignment Description: ${assignment.content}
 
 Overall feedback provided: "${overallFeedback}"
 
-Total score: ${totalScore}/${maxPossibleScore} (${scorePercentage.toFixed(2)}%)
+Total score: ${totalScore}/${maxPossibleScore} (${scorePercentage.toFixed(2)}%)`;
+
+      // Include submission analysis as context if available
+      if (submissionAnalysis) {
+        overallPrompt += `
+
+SUBMISSION ANALYSIS (for context):
+The original submission was analyzed and found to have the following characteristics:
+${submissionAnalysis}
+
+Use this analysis to understand what areas the submission was lacking in, so you can guide the peer reviewer to provide more targeted and helpful feedback in those specific areas.`;
+      }
+
+      overallPrompt += `
 
 ${overallPromptTemplate}`;
 
@@ -179,14 +200,27 @@ Format your response as:
         const criterionFeedback = feedback[criterion.id] || '';
         
         // Build the complete prompt with system context + instructor's custom instructions
-        const criterionPrompt = `You are an AI assistant helping a student improve their peer review feedback.
+        let criterionPrompt = `You are an AI assistant helping a student improve their peer review feedback.
 Assignment: ${assignment.title}
 Assignment Description: ${assignment.content}
 Criterion: ${criterion.name}
 Description: ${criterion.description}
 Max Points: ${criterion.maxPoints}
 Score Given: ${criterionScore} (${scorePercentage.toFixed(2)}%)
-Feedback Provided: "${criterionFeedback}"
+Feedback Provided: "${criterionFeedback}"`;
+
+        // Include submission analysis as context if available
+        if (submissionAnalysis) {
+          criterionPrompt += `
+
+SUBMISSION ANALYSIS (for context):
+The original submission was analyzed and found to have the following characteristics:
+${submissionAnalysis}
+
+Use this analysis to understand what areas the submission was lacking in, so you can guide the peer reviewer to provide more targeted and helpful feedback for this specific criterion.`;
+        }
+
+        criterionPrompt += `
 
 ${criteriaPromptTemplate}`;
 

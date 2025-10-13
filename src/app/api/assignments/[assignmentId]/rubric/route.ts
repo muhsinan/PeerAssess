@@ -60,7 +60,7 @@ export async function GET(
         SELECT 
           level_id as id,
           description,
-          points,
+          points as score,
           order_position as "orderPosition"
         FROM 
           peer_assessment.rubric_performance_levels

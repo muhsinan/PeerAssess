@@ -15,6 +15,22 @@ export async function GET(
       );
     }
 
+    // Get user ID and role from query parameters to determine what data to return
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const userRole = searchParams.get('role');
+
+    // Determine if we should show real names (for instructors) or anonymous (for students)
+    let showRealNames = false;
+    if (userId && userRole === 'instructor') {
+      // Verify the user is actually an instructor
+      const userCheck = await pool.query(
+        'SELECT role FROM peer_assessment.users WHERE user_id = $1 AND role = $2',
+        [userId, 'instructor']
+      );
+      showRealNames = userCheck.rows.length > 0;
+    }
+
     // Get all peer reviews for this assignment's submissions
     const result = await pool.query(`
       SELECT 
@@ -24,7 +40,10 @@ export async function GET(
         pr.status,
         pr.assigned_date as "assignedDate",
         pr.completed_date as "completedDate",
-        u.name as "reviewerName"
+        CASE 
+          WHEN $2 = true THEN u.name
+          ELSE 'Anonymous Reviewer'
+        END as "reviewerName"
       FROM 
         peer_assessment.peer_reviews pr
       JOIN 
@@ -35,7 +54,7 @@ export async function GET(
         s.assignment_id = $1
       ORDER BY 
         pr.assigned_date DESC
-    `, [assignmentId]);
+    `, [assignmentId, showRealNames]);
 
     return NextResponse.json({
       peerReviews: result.rows

@@ -17,6 +17,7 @@ export default function CreateAssignment() {
     description: '',
     courseId: '',
     dueDate: '',
+    rubricId: '',
     aiPromptsEnabled: true,
     aiOverallPrompt: `Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced. Keep your response concise and actionable.`,
     aiCriteriaPrompt: `Your tasks:
@@ -25,7 +26,10 @@ export default function CreateAssignment() {
 2. After the suggestion, provide a single revised version of the feedback as if written by the reviewer, incorporating the improvement. Write it in the reviewer's voice.
 
 Format your response as:
-1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"`
+1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"`,
+    aiInstructorEnabled: true,
+    aiInstructorPrompt: '',
+    feedbackChatType: 'ai'
   });
   
   const [availableCourses, setAvailableCourses] = useState<Array<{
@@ -33,6 +37,14 @@ Format your response as:
     name: string;
   }>>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  
+  const [availableRubrics, setAvailableRubrics] = useState<Array<{
+    id: number;
+    name: string;
+    description: string;
+    criteria_count: number;
+  }>>([]);
+  const [isLoadingRubrics, setIsLoadingRubrics] = useState(false);
 
   // Check if user is authorized (must be an instructor)
   useEffect(() => {
@@ -48,6 +60,8 @@ Format your response as:
       } else if (userId) {
         // Fetch available courses for this instructor
         fetchInstructorCourses(userId);
+        // Fetch available rubrics
+        fetchAvailableRubrics();
       }
     }
   }, [router]);
@@ -72,6 +86,27 @@ Format your response as:
       setError('Failed to load courses. Please refresh the page.');
     } finally {
       setIsLoadingCourses(false);
+    }
+  };
+
+  // Fetch all available rubrics
+  const fetchAvailableRubrics = async () => {
+    try {
+      setIsLoadingRubrics(true);
+      const response = await fetch('/api/rubrics');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch rubrics');
+      }
+      
+      const data = await response.json();
+      console.log('Rubrics data received:', data);
+      setAvailableRubrics(data.rubrics || []);
+    } catch (error) {
+      console.error('Error fetching rubrics:', error);
+      // Don't show error for rubrics as it's optional
+    } finally {
+      setIsLoadingRubrics(false);
     }
   };
 
@@ -124,7 +159,11 @@ Format your response as:
           dueDate: formData.dueDate,
           aiPromptsEnabled: formData.aiPromptsEnabled,
           aiOverallPrompt: formData.aiOverallPrompt,
-          aiCriteriaPrompt: formData.aiCriteriaPrompt
+          aiCriteriaPrompt: formData.aiCriteriaPrompt,
+          aiInstructorEnabled: formData.aiInstructorEnabled,
+          aiInstructorPrompt: formData.aiInstructorPrompt,
+          feedbackChatType: formData.feedbackChatType,
+          rubricId: formData.rubricId ? parseInt(formData.rubricId) : null
         })
       });
       
@@ -310,6 +349,50 @@ Format your response as:
                       </div>
                     </div>
 
+                    {/* Rubric Selection */}
+                    <div className="sm:col-span-4">
+                      <label htmlFor="rubricId" className="block text-sm font-medium text-gray-700">
+                        Assessment Rubric (Optional) {isLoadingRubrics && <span className="text-sm text-gray-500">(Loading...)</span>}
+                      </label>
+                      <div className="mt-1">
+                        <select
+                          id="rubricId"
+                          name="rubricId"
+                          value={formData.rubricId}
+                          onChange={handleInputChange}
+                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md bg-white text-gray-900"
+                          style={{
+                            backgroundColor: 'white',
+                            color: '#111827'
+                          }}
+                          disabled={isLoadingRubrics}
+                        >
+                          <option value="" style={{ backgroundColor: 'white', color: '#111827' }}>
+                            {isLoadingRubrics ? 'Loading rubrics...' : 'Select a rubric (optional)'}
+                          </option>
+                          {availableRubrics.map(rubric => (
+                            <option 
+                              key={rubric.id} 
+                              value={rubric.id}
+                              style={{ backgroundColor: 'white', color: '#111827' }}
+                            >
+                              {rubric.name} ({rubric.criteria_count} criteria)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {!isLoadingRubrics && availableRubrics.length === 0 && (
+                        <p className="mt-2 text-sm text-yellow-600">
+                          No rubrics available. You can create one later or <Link href="/rubrics/create" className="text-purple-600 hover:text-purple-500 underline">create a rubric now</Link>.
+                        </p>
+                      )}
+                      {!isLoadingRubrics && availableRubrics.length > 0 && (
+                        <p className="mt-2 text-sm text-gray-500">
+                          Choose a rubric to define assessment criteria for this assignment. You can also create or assign a rubric later.
+                        </p>
+                      )}
+                    </div>
+
                     {/* Description */}
                     <div className="sm:col-span-6">
                       <label htmlFor="description" className="block text-sm font-medium text-gray-700">
@@ -402,6 +485,120 @@ Format your response as:
                             </div>
                           </div>
                         )}
+                        
+                        {/* Instructor AI Generation Configuration */}
+                        <div className="mt-8 border-t border-gray-200 pt-6">
+                          <h4 className="text-md font-medium text-gray-900 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2 text-blue-600">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                            </svg>
+                            Instructor AI Review Generation
+                          </h4>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Allow instructors to generate AI peer reviews for submissions. Reviews will appear anonymous to students.
+                          </p>
+                          
+                          {/* Enable Instructor AI Toggle */}
+                          <div className="mt-4">
+                            <div className="flex items-center">
+                              <input
+                                id="aiInstructorEnabled"
+                                name="aiInstructorEnabled"
+                                type="checkbox"
+                                checked={formData.aiInstructorEnabled}
+                                onChange={handleInputChange}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label htmlFor="aiInstructorEnabled" className="ml-2 block text-sm text-gray-900">
+                                Enable AI peer review generation for instructors
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Instructor AI Prompt Configuration */}
+                          {formData.aiInstructorEnabled && (
+                            <div className="mt-6">
+                              <label htmlFor="aiInstructorPrompt" className="block text-sm font-medium text-gray-700">
+                                Custom AI Peer Review Prompt (Optional)
+                              </label>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Customize how the AI generates peer reviews. Leave empty to use the default peer-style prompt. Assignment details, submission content, and rubric criteria are added automatically.
+                              </p>
+                              <div className="mt-2">
+                                <textarea
+                                  id="aiInstructorPrompt"
+                                  name="aiInstructorPrompt"
+                                  rows={8}
+                                  value={formData.aiInstructorPrompt}
+                                  onChange={handleInputChange}
+                                  placeholder="Leave empty for default peer-style reviews, or enter custom instructions..."
+                                  className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md font-mono text-xs"
+                                />
+                              </div>
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-400">
+                                  Example: "Focus on encouraging creative aspects and provide specific suggestions for improvement using casual, supportive language."
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Feedback Chat Configuration */}
+                        <div className="mt-8 border-t border-gray-200 pt-6">
+                          <h4 className="text-md font-medium text-gray-900 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2 text-green-600">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                            </svg>
+                            Feedback Chat Settings
+                          </h4>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Configure how students can discuss peer review feedback. AI chat is recommended for consistent, helpful responses.
+                          </p>
+                          
+                          {/* Chat Type Selection */}
+                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-700">
+                              Feedback Chat Type
+                            </label>
+                            <div className="mt-2 space-y-3">
+                              <div className="flex items-center">
+                                <input
+                                  id="chatTypeAI"
+                                  name="feedbackChatType"
+                                  type="radio"
+                                  value="ai"
+                                  checked={formData.feedbackChatType === 'ai'}
+                                  onChange={handleInputChange}
+                                  className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300"
+                                />
+                                <label htmlFor="chatTypeAI" className="ml-2 block text-sm text-gray-900">
+                                  <span className="font-medium text-green-700">AI Chat (Recommended)</span>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Students chat with AI for consistent, always-available feedback discussions. AI responds as a helpful peer reviewer.
+                                  </p>
+                                </label>
+                              </div>
+                              <div className="flex items-center">
+                                <input
+                                  id="chatTypePeer"
+                                  name="feedbackChatType"
+                                  type="radio"
+                                  value="peer"
+                                  checked={formData.feedbackChatType === 'peer'}
+                                  onChange={handleInputChange}
+                                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300"
+                                />
+                                <label htmlFor="chatTypePeer" className="ml-2 block text-sm text-gray-900">
+                                  <span className="font-medium text-purple-700">Peer-to-Peer Chat</span>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Students chat directly with their anonymous peer reviewers. Requires both parties to be online.
+                                  </p>
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

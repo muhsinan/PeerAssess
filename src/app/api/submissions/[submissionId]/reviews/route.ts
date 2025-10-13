@@ -16,6 +16,22 @@ export async function GET(
       );
     }
 
+    // Get user ID and role from query parameters to determine what data to return
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const userRole = searchParams.get('role');
+
+    // Determine if we should show real names (for instructors) or anonymous (for students)
+    let showRealNames = false;
+    if (userId && userRole === 'instructor') {
+      // Verify the user is actually an instructor
+      const userCheck = await pool.query(
+        'SELECT role FROM peer_assessment.users WHERE user_id = $1 AND role = $2',
+        [userId, 'instructor']
+      );
+      showRealNames = userCheck.rows.length > 0;
+    }
+
     // Verify submission exists
     const submissionCheck = await pool.query(
       `SELECT submission_id FROM peer_assessment.submissions WHERE submission_id = $1`,
@@ -30,22 +46,28 @@ export async function GET(
     }
 
     // Get all reviews for this submission with reviewer details
+    // Hide reviewer identity for AI-generated reviews
     const reviewsResult = await pool.query(
       `SELECT 
          pr.review_id as id,
          pr.submission_id as "submissionId",
          pr.reviewer_id as "reviewerId",
-         u.name as "reviewerName",
+         CASE 
+           WHEN $2 = true THEN u.name
+           ELSE 'Anonymous Reviewer'
+         END as "reviewerName",
          pr.status,
          pr.assigned_date as "assignedDate",
          pr.completed_date as "completedDate",
          pr.overall_feedback as "overallFeedback",
-         pr.total_score as "totalScore"
+         pr.total_score as "totalScore",
+         pr.is_ai_generated as "isAiGenerated",
+         pr.ai_feedback_synthesis as "aiSynthesis"
        FROM peer_assessment.peer_reviews pr
        JOIN peer_assessment.users u ON pr.reviewer_id = u.user_id
        WHERE pr.submission_id = $1
        ORDER BY pr.assigned_date ASC`,
-      [submissionId]
+      [submissionId, showRealNames]
     );
 
     // Get detailed scores for each review
@@ -56,7 +78,7 @@ export async function GET(
              rs.criterion_id as "criterionId",
              rs.score,
              rs.feedback
-           FROM peer_assessment.review_scores rs
+           FROM peer_assessment.peer_review_scores rs
            WHERE rs.review_id = $1
            ORDER BY rs.criterion_id ASC`,
           [review.id]

@@ -10,7 +10,7 @@ interface RubricCriterion {
   levels?: Array<{
     id: number;
     description: string;
-    points: number;
+    score: number;
     orderPosition: number;
   }>;
 }
@@ -74,9 +74,9 @@ export default function RubricForm({
                       id={`score-${criterion.id}-level-${level.id}`}
                       name={`score-${criterion.id}`}
                       type="radio"
-                      value={level.points}
-                      checked={scores[criterion.id] === level.points}
-                      onChange={() => handleScoreChange(criterion.id, level.points)}
+                      value={level.score}
+                      checked={scores[criterion.id] === level.score}
+                      onChange={() => handleScoreChange(criterion.id, level.score)}
                       className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 mt-1"
                     />
                     <div className="ml-3 flex-1">
@@ -84,7 +84,7 @@ export default function RubricForm({
                         htmlFor={`score-${criterion.id}-level-${level.id}`}
                         className="block text-sm font-medium text-gray-900 cursor-pointer"
                       >
-                        <span className="font-semibold">{level.points} points:</span> {level.description}
+                        <span className="font-semibold">{level.score} points:</span> {level.description}
                       </label>
                     </div>
                   </div>

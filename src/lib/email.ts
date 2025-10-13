@@ -1,6 +1,5 @@
-// This is a mock email service
-// In a real application, you would integrate with a proper email service
-// like SendGrid, AWS SES, or Nodemailer
+// Email service supporting both EmailJS (frontend) and Nodemailer/SendGrid (backend)
+// EmailJS is preferred when available, falls back to SendGrid/Gmail
 
 import nodemailer from 'nodemailer';
 
@@ -16,7 +15,11 @@ const createTransporter = () => {
   // For development, you can use Gmail SMTP or any other SMTP service
   // For production on VM, you might want to use a different service
   
-  // SENDGRID Configuration (Recommended - simple API key, 100 free emails/day)
+  // EMAILJS Configuration (New preferred method - client-side sending)
+  // Note: EmailJS works on the frontend, this is here for reference
+  // The actual EmailJS sending is handled by the emailjs.ts file
+  
+  // SENDGRID Configuration (Fallback - simple API key, 100 free emails/day)
   if (process.env.SENDGRID_API_KEY) {
     return nodemailer.createTransport({
       host: 'smtp.sendgrid.net',
@@ -65,13 +68,30 @@ const createTransporter = () => {
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
   // Debug: Check if environment variables are loaded
   console.log('🔍 DEBUG - Email credentials check:');
+  console.log('EMAILJS_SERVICE_ID:', process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID ? 'SET' : 'NOT SET');
+  console.log('EMAILJS_TEMPLATE_ID:', process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID ? 'SET' : 'NOT SET');
+  console.log('EMAILJS_PUBLIC_KEY:', process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY ? 'SET' : 'NOT SET');
   console.log('SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'SET' : 'NOT SET');
   console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
-  console.log('EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? 'SET (length: ' + process.env.EMAIL_PASSWORD.length + ')' : 'NOT SET');
+  console.log('EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? 'SET (length: ' + process.env.EMAIL_PASSWORD?.length + ')' : 'NOT SET');
   console.log('NODE_ENV:', process.env.NODE_ENV);
   
-  // In development, show a mock email if no real email credentials are provided
-  if (process.env.NODE_ENV === 'development' && (!process.env.SENDGRID_API_KEY && (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD))) {
+  // Check if EmailJS is configured (preferred method)
+  const hasEmailJSConfig = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID && 
+                           process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID && 
+                           process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+  
+  // If EmailJS is configured, use it instead of server-side email
+  if (hasEmailJSConfig) {
+    console.log('EmailJS configured - returning true for server-side, frontend will handle actual sending');
+    return true; // Return true so API doesn't fail, but frontend needs to handle EmailJS
+  }
+  
+  const hasSendGridConfig = process.env.SENDGRID_API_KEY;
+  const hasGmailConfig = process.env.EMAIL_USER && process.env.EMAIL_PASSWORD;
+  
+  // Fallback: show mock email in development if no EmailJS
+  if (process.env.NODE_ENV === 'development' && !hasEmailJSConfig && !hasSendGridConfig && !hasGmailConfig) {
     console.log('====== MOCK EMAIL (No credentials provided) ======');
     console.log(`To: ${options.to}`);
     console.log(`Subject: ${options.subject}`);
@@ -80,7 +100,10 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
     console.log('HTML:');
     console.log(options.html || 'No HTML content');
     console.log('===============================================');
-    console.log('To send real emails, set SENDGRID_API_KEY or EMAIL_USER/EMAIL_PASSWORD environment variables');
+    console.log('To send real emails, set one of the following:');
+    console.log('- EmailJS: NEXT_PUBLIC_EMAILJS_SERVICE_ID, NEXT_PUBLIC_EMAILJS_TEMPLATE_ID, NEXT_PUBLIC_EMAILJS_PUBLIC_KEY');
+    console.log('- SendGrid: SENDGRID_API_KEY');
+    console.log('- Gmail: EMAIL_USER, EMAIL_PASSWORD');
     return true;
   }
 
@@ -88,7 +111,7 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
     const transporter = createTransporter();
     
     const mailOptions = {
-      from: `"PeerAssess" <${process.env.SENDGRID_SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@peerassess.com'}>`,
+      from: `"Peercept" <${process.env.SENDGRID_SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@peercept.com'}>`,
       to: options.to,
       subject: options.subject,
       text: options.text,
@@ -127,7 +150,7 @@ export const sendPasswordResetEmail = async (
   const text = `
     Hello ${name},
     
-    You requested a password reset for your PeerAssess account.
+    You requested a password reset for your Peercept account.
     
     Please click the link below to reset your password:
     ${resetUrl}
@@ -137,7 +160,7 @@ export const sendPasswordResetEmail = async (
     If you didn't request this, please ignore this email.
     
     Best regards,
-    PeerAssess Team
+    Peercept Team
   `;
   
   return await sendEmail({
@@ -156,11 +179,11 @@ export const sendCourseInvitationEmail = async (
 ): Promise<boolean> => {
   const invitationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?invitation=${invitationToken}`;
   
-  const subject = `Invitation to join ${courseName} on PeerAssess`;
+  const subject = `Invitation to join ${courseName} on Peercept`;
   const text = `
     Hello,
     
-    You have been invited by ${instructorName} to join the course "${courseName}" on PeerAssess.
+    You have been invited by ${instructorName} to join the course "${courseName}" on Peercept.
     
     To accept this invitation and create your account, please click the link below:
     ${invitationUrl}
@@ -170,7 +193,7 @@ export const sendCourseInvitationEmail = async (
     If you didn't expect this invitation, you can safely ignore this email.
     
     Best regards,
-    PeerAssess Team
+    Peercept Team
   `;
   
   const html = `
@@ -184,7 +207,7 @@ export const sendCourseInvitationEmail = async (
     <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
       <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #7c3aed; margin: 0; font-size: 28px;">PeerAssess</h1>
+          <h1 style="color: #7c3aed; margin: 0; font-size: 28px;">Peercept</h1>
           <p style="color: #666; margin: 5px 0 0 0;">Academic Peer Review Platform</p>
         </div>
         
@@ -197,7 +220,7 @@ export const sendCourseInvitationEmail = async (
         
         <p style="color: #4a5568; line-height: 1.6; margin-bottom: 20px;">
           You have been invited by <strong style="color: #2d3748;">${instructorName}</strong> to join the course 
-          <strong style="color: #2d3748;">"${courseName}"</strong> on PeerAssess.
+          <strong style="color: #2d3748;">"${courseName}"</strong> on Peercept.
         </p>
         
         <p style="color: #4a5568; line-height: 1.6; margin-bottom: 30px;">
@@ -230,7 +253,7 @@ export const sendCourseInvitationEmail = async (
         <div style="text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 20px;">
           <p style="color: #a0aec0; font-size: 12px; margin: 0;">
             Best regards,<br>
-            <strong>PeerAssess Team</strong>
+            <strong>Peercept Team</strong>
           </p>
         </div>
       </div>

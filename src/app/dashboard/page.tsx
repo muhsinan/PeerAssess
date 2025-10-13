@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Layout from "../../components/layout/Layout";
 import Link from "next/link";
 
 export default function Dashboard() {
+  const router = useRouter();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('');
   const [userId, setUserId] = useState<string>('');
@@ -19,8 +21,14 @@ export default function Dashboard() {
       setUserRole(role);
       setUserName(name);
       setUserId(id);
+
+      // Redirect admin users to admin page
+      if (role === 'admin') {
+        router.push('/admin');
+        return;
+      }
     }
-  }, []);
+  }, [router]);
 
   // Render appropriate dashboard based on user role
   return (
@@ -56,6 +64,7 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [assignedReviews, setAssignedReviews] = useState<any[]>([]);
   const [receivedFeedback, setReceivedFeedback] = useState<any[]>([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
   
   // Fetch dashboard data for student
   useEffect(() => {
@@ -79,6 +88,13 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
         setSubmissions(data.submissions || []);
         setAssignedReviews(data.assignedReviews || []);
         setReceivedFeedback(data.receivedFeedback || []);
+        
+        // Fetch pending enrollments
+        const pendingResponse = await fetch(`/api/students/pending-enrollments?studentId=${userId}`);
+        if (pendingResponse.ok) {
+          const pendingData = await pendingResponse.json();
+          setPendingEnrollments(pendingData.pendingRequests || []);
+        }
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         setError(error instanceof Error ? error.message : 'An unexpected error occurred');
@@ -276,6 +292,80 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
             )}
           </div>
         </div>
+        
+        {/* Pending Course Enrollments */}
+        {pendingEnrollments.filter(req => req.status === 'pending').length > 0 && (
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="px-4 py-5 sm:px-6 bg-yellow-50">
+              <h3 className="text-lg font-medium leading-6 text-yellow-800">Pending Course Enrollments</h3>
+              <p className="mt-1 text-sm text-gray-500">Course enrollment requests waiting for instructor approval</p>
+            </div>
+            <div className="px-4 py-5 sm:p-6">
+              <div className="space-y-4">
+                {pendingEnrollments.filter(req => req.status === 'pending').map((request) => (
+                  <div key={request.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="text-lg font-medium text-gray-900">{request.courseName}</h4>
+                        <p className="text-sm text-gray-500 mt-1">
+                          <span className="font-medium">Instructor:</span> {request.instructorName}
+                        </p>
+                        {request.courseDescription && (
+                          <p className="text-sm text-gray-500 mt-1">{request.courseDescription}</p>
+                        )}
+                        <p className="text-sm text-gray-500 mt-2">
+                          <span className="font-medium">Requested:</span> {formatDate(request.requestedAt)}
+                        </p>
+                        {request.status === 'rejected' && request.rejectionReason && (
+                          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                            <p className="text-sm text-red-700">
+                              <span className="font-medium">Rejection reason:</span> {request.rejectionReason}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="ml-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          request.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          request.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {request.status === 'pending' ? 'Waiting for Approval' :
+                           request.status === 'approved' ? 'Approved' :
+                           'Rejected'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-blue-700">
+                        Your enrollment requests are being reviewed by the course instructors. You'll be automatically enrolled once approved.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <Link
+                      href="/my-enrollment-requests"
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      View All Requests
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Upcoming Assignments */}
         <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -509,7 +599,7 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
             {receivedFeedback && receivedFeedback.length > 0 ? (
               <div className="space-y-6">
                 {receivedFeedback.map((feedback) => (
-                  <div key={feedback.id} className="bg-white shadow overflow-hidden sm:rounded-lg">
+                  <div key={feedback.submissionId || feedback.id} className="bg-white shadow overflow-hidden sm:rounded-lg">
                     <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
                       <div>
                         <h3 className="text-lg leading-6 font-medium text-gray-900">
@@ -520,23 +610,47 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
                         </p>
                       </div>
                       <div>
-                        <span className="font-bold text-lg text-indigo-600">{feedback.totalScore || 0}</span>
-                        <span className="text-gray-500 text-sm ml-1">points</span>
+                        {feedback.reviewCount > 1 ? (
+                          <>
+                            <span className="font-bold text-lg text-indigo-600">{feedback.averageScore?.toFixed(1) || 0}</span>
+                            <span className="text-gray-500 text-sm ml-1">avg ({feedback.reviewCount} reviews)</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-bold text-lg text-indigo-600">{feedback.reviews?.[0]?.totalScore || feedback.totalScore || 0}</span>
+                            <span className="text-gray-500 text-sm ml-1">points</span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
                       <div className="text-sm text-gray-900 space-y-3">
                         <div>
-                          <p className="font-medium text-gray-500">Feedback from {feedback.reviewerName}:</p>
-                          <p className="mt-1">{feedback.overallFeedback || 'No feedback provided.'}</p>
+                          <p className="font-medium text-gray-500 flex items-center">
+                            <svg className="w-4 h-4 mr-1 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            {feedback.reviewCount > 1 ? 'Combined Feedback Summary:' : 'Feedback Summary:'}
+                          </p>
+                          <p className="mt-1 text-gray-700 bg-purple-50 p-2 rounded text-sm">
+                            {feedback.reviewCount > 1 && feedback.aggregatedSynthesis
+                              ? feedback.aggregatedSynthesis
+                              : feedback.reviews?.[0]?.aiSynthesis || feedback.reviews?.[0]?.overallFeedback || feedback.aiSynthesis || feedback.overallFeedback || 'No feedback synthesis available.'
+                            }
+                          </p>
                         </div>
                         <div className="flex justify-between items-center pt-3">
-                          <span className="text-xs text-gray-500">Received on {formatDate(feedback.completedDate)}</span>
+                          <span className="text-xs text-gray-500">
+                            {feedback.reviewCount > 1
+                              ? `Latest review: ${formatDate(feedback.latestCompletedDate)}`
+                              : `Received on ${formatDate(feedback.completedDate || feedback.reviews?.[0]?.completedDate)}`
+                            }
+                          </span>
                           <Link 
-                            href={`/reviews/${feedback.id}`}
+                            href={feedback.submissionId ? `/submissions/${feedback.submissionId}/feedback` : `/reviews/${feedback.id || feedback.reviews?.[0]?.reviewId}`}
                             className="text-sm text-indigo-600 hover:text-indigo-900"
                           >
-                            View Full Feedback
+                            {feedback.reviewCount > 1 ? 'View All Feedback' : 'View Full Feedback'}
                           </Link>
                         </div>
                       </div>
@@ -562,6 +676,8 @@ function InstructorDashboard({ userName }: { userName: string }) {
   const [courses, setCourses] = useState<any[]>([]);
   const [recentAssignments, setRecentAssignments] = useState<any[]>([]);
   const [rubrics, setRubrics] = useState<any[]>([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState<any>({});
+  const [totalPendingCount, setTotalPendingCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
@@ -618,10 +734,27 @@ function InstructorDashboard({ userName }: { userName: string }) {
         const rubricsData = await rubricsRes.json();
         console.log('Rubrics data received:', rubricsData);
         
+        // Fetch pending enrollments
+        const pendingRes = await fetch(`/api/instructors/pending-enrollments?instructorId=${userId}`);
+        if (!pendingRes.ok) {
+          const errorData = await pendingRes.json().catch(() => ({}));
+          throw new Error(`Failed to fetch pending enrollments: ${errorData.details || pendingRes.statusText}`);
+        }
+        const pendingData = await pendingRes.json();
+        console.log('Pending enrollments data received:', pendingData);
+        
+        // Create a map of course ID to pending count for easy lookup
+        const pendingMap = {};
+        pendingData.coursesPendingCounts.forEach((course: any) => {
+          pendingMap[course.courseId] = course.pendingCount;
+        });
+        
         // Update state with fetched data
         setCourses(coursesData.courses);
         setRecentAssignments(assignmentsData.assignments || []);
         setRubrics(rubricsData.rubrics || []);
+        setPendingEnrollments(pendingMap);
+        setTotalPendingCount(pendingData.totalPendingCount || 0);
         setError(null);
         setErrorDetails(null);
       } catch (err) {
@@ -762,7 +895,14 @@ function InstructorDashboard({ userName }: { userName: string }) {
               <div className="px-4 py-5 sm:px-6 bg-purple-50">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-medium leading-6 text-purple-800">My Courses</h3>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-lg font-medium leading-6 text-purple-800">My Courses</h3>
+                      {totalPendingCount > 0 && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          {totalPendingCount} pending
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 text-sm text-gray-500">Courses you're currently teaching</p>
                   </div>
                   <Link 
@@ -780,7 +920,14 @@ function InstructorDashboard({ userName }: { userName: string }) {
                       <li key={course.id} className="py-4">
                         <div className="flex flex-col space-y-2">
                           <div className="flex items-center justify-between">
-                            <h4 className="text-md font-medium text-black">{course.name}</h4>
+                            <div className="flex items-center space-x-2">
+                              <h4 className="text-md font-medium text-black">{course.name}</h4>
+                              {pendingEnrollments[course.id] > 0 && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                  {pendingEnrollments[course.id]} pending
+                                </span>
+                              )}
+                            </div>
                             <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                               {course.code}
                             </span>
@@ -802,6 +949,14 @@ function InstructorDashboard({ userName }: { userName: string }) {
                             >
                               Add Students
                             </Link>
+                            {pendingEnrollments[course.id] > 0 && (
+                              <Link 
+                                href={`/courses/${course.id}/pending-enrollments`}
+                                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                              >
+                                Review Requests ({pendingEnrollments[course.id]})
+                              </Link>
+                            )}
                           </div>
                         </div>
                       </li>

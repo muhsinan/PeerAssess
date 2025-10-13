@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# PeerAssess Update Script
+# Peercept Update Script
 # Run this script on your VM to update the application
 
 set -e
 
-echo "🔄 Starting PeerAssess update..."
+echo "🔄 Starting Peercept update..."
 
 # Navigate to project directory
 cd /var/www/peerassess

@@ -1,6 +1,6 @@
-# PeerAssess: AI-Powered Peer Assessment Tool
+# Peercept: AI-Powered Peer Assessment Tool
 
-PeerAssess is a modern web application designed to facilitate and enhance peer assessment in educational settings. By combining user-friendly interfaces with AI assistance, it creates a comprehensive platform for students to submit assignments and review their peers' work.
+Peercept is a modern web application designed to facilitate and enhance peer assessment in educational settings. By combining user-friendly interfaces with AI assistance, it creates a comprehensive platform for students to submit assignments and review their peers' work.
 
 ## Features
 

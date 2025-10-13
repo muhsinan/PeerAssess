@@ -91,9 +91,10 @@ export async function GET(
       const headers = new Headers();
       headers.set('Content-Type', attachment.fileType || 'application/octet-stream');
       headers.set('Content-Disposition', `attachment; filename="${attachment.fileName}"`);
-      headers.set('Content-Length', attachment.fileSize.toString());
+      const fileArray = new Uint8Array(fileBuffer);
+      headers.set('Content-Length', fileArray.byteLength.toString());
       
-      return new NextResponse(fileBuffer, {
+      return new NextResponse(fileArray, {
         status: 200,
         headers: headers
       });

@@ -13,16 +13,20 @@ module.exports = {
         NODE_ENV: 'development',
         PORT: 3000,
         // Database Configuration
-        DB_USER: 'muhsinan',
-        DB_HOST: '35.246.244.112',
-        DB_NAME: 'peerassessdb',
+        DB_USER: 'peerassess_user',
+        DB_HOST: '192.168.3.8',
+        DB_NAME: 'peerassess_local',
         DB_PASSWORD: '1516',
         DB_PORT: '5432',
         // Application Configuration
         NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
         // OpenAI Configuration (replace with your actual key)
         NEXT_PUBLIC_OPENAI_API_KEY: 'your_openai_api_key_here',
-        // SendGrid Configuration (replace with your actual key)
+        // EmailJS Configuration (replace with your actual keys)
+        NEXT_PUBLIC_EMAILJS_SERVICE_ID: 'your_emailjs_service_id_here',
+        NEXT_PUBLIC_EMAILJS_TEMPLATE_ID: 'your_emailjs_template_id_here',
+        NEXT_PUBLIC_EMAILJS_PUBLIC_KEY: 'your_emailjs_public_key_here',
+        // SendGrid Configuration (fallback - replace with your actual key)
         SENDGRID_API_KEY: 'your_sendgrid_api_key_here',
         // JWT Secret (replace with a secure secret)
         JWT_SECRET: 'your_jwt_secret_here',
@@ -34,16 +38,20 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
         // Database Configuration
-        DB_USER: 'muhsinan',
-        DB_HOST: '35.246.244.112',
-        DB_NAME: 'peerassessdb',
+        DB_USER: 'peerassess_user',
+        DB_HOST: '192.168.3.8',
+        DB_NAME: 'peerassess_local',
         DB_PASSWORD: '1516',
         DB_PORT: '5432',
         // Application Configuration (update with your production URL)
         NEXT_PUBLIC_APP_URL: 'https://your-production-domain.com',
         // OpenAI Configuration (replace with your actual key)
         NEXT_PUBLIC_OPENAI_API_KEY: 'your_openai_api_key_here',
-        // SendGrid Configuration (replace with your actual key)
+        // EmailJS Configuration (replace with your actual keys)
+        NEXT_PUBLIC_EMAILJS_SERVICE_ID: 'your_emailjs_service_id_here',
+        NEXT_PUBLIC_EMAILJS_TEMPLATE_ID: 'your_emailjs_template_id_here',
+        NEXT_PUBLIC_EMAILJS_PUBLIC_KEY: 'your_emailjs_public_key_here',
+        // SendGrid Configuration (fallback - replace with your actual key)
         SENDGRID_API_KEY: 'your_sendgrid_api_key_here',
         // JWT Secret (replace with a secure secret)
         JWT_SECRET: 'your_jwt_secret_here',

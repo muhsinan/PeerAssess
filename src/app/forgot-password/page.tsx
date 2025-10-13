@@ -4,8 +4,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
+import { useEmailJS } from '@/hooks/useEmailJS';
 
 export default function ForgotPassword() {
+  const { sendPasswordResetEmail } = useEmailJS();
   const [email, setEmail] = useState('');
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +51,21 @@ export default function ForgotPassword() {
       
       if (!response.ok) {
         throw new Error(data.error || 'Failed to send password reset email');
+      }
+      
+      // Send actual email via EmailJS if email data is provided
+      if (data.emailData) {
+        try {
+          const emailSent = await sendPasswordResetEmail(data.emailData);
+          if (emailSent) {
+            console.log('Password reset email sent successfully via EmailJS');
+          } else {
+            console.log('EmailJS sending failed, but reset token was created');
+          }
+        } catch (emailError) {
+          console.error('EmailJS sending failed:', emailError);
+          // Don't fail the whole process if email fails
+        }
       }
       
       // Show success message

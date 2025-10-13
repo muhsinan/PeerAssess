@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import Layout from '../../../../components/layout/Layout';
 import Link from 'next/link';
 import BulkStudentUpload from '@/components/BulkStudentUpload';
+import { useEmailJS } from '@/hooks/useEmailJS';
 
 export default function AddStudentsToCourse({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const courseId = React.use(params).id;
+  const { sendInvitationEmail } = useEmailJS();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [courseName, setCourseName] = useState('Loading...');
@@ -234,9 +236,30 @@ export default function AddStudentsToCourse({ params }: { params: Promise<{ id: 
           setSuccessMessage(`${newStudent.name} has been added to the course.`);
         } else if (!data.userExists && data.invitationSent) {
           // Student doesn't exist - invitation was sent
-          setSuccessMessage(
-            `Invitation sent to ${data.email}! They will be automatically enrolled when they register using the invitation link.`
-          );
+          // Send the actual email via EmailJS
+          if (data.emailData) {
+            try {
+              const emailSent = await sendInvitationEmail(data.emailData);
+              if (emailSent) {
+                setSuccessMessage(
+                  `Invitation sent to ${data.email}! They will be automatically enrolled when they register using the invitation link.`
+                );
+              } else {
+                setSuccessMessage(
+                  `Invitation created for ${data.email}, but email delivery failed. They can still register using the invitation link.`
+                );
+              }
+            } catch (emailError) {
+              console.error('EmailJS sending failed:', emailError);
+              setSuccessMessage(
+                `Invitation created for ${data.email}, but email delivery failed. They can still register using the invitation link.`
+              );
+            }
+          } else {
+            setSuccessMessage(
+              `Invitation sent to ${data.email}! They will be automatically enrolled when they register using the invitation link.`
+            );
+          }
         } else {
           setSuccessMessage(data.message || 'Student processed successfully');
         }

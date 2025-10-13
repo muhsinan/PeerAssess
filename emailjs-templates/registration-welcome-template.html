@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Peercept</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      color: #7c3aed;
+      margin: 0;
+      font-size: 28px;
+    }
+    .header p {
+      color: #666;
+      margin: 5px 0 0 0;
+    }
+    .alert-box {
+      background-color: #f0f9ff;
+      padding: 20px;
+      border-radius: 6px;
+      border-left: 4px solid #0ea5e9;
+      margin-bottom: 25px;
+    }
+    .alert-box h2 {
+      color: #0ea5e9;
+      margin: 0 0 10px 0;
+      font-size: 20px;
+    }
+    .alert-box p {
+      margin: 0;
+      color: #0c4a6e;
+    }
+    .content {
+      color: #4a5568;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .highlight {
+      color: #2d3748;
+      font-weight: 600;
+    }
+    .button-container {
+      text-align: center;
+      margin: 30px 0;
+    }
+    .button {
+      background-color: #7c3aed;
+      color: white;
+      padding: 14px 28px;
+      text-decoration: none;
+      border-radius: 6px;
+      display: inline-block;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .help-box {
+      background-color: #f7fafc;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 25px 0;
+    }
+    .help-box p {
+      margin: 0;
+      font-size: 14px;
+      color: #718096;
+    }
+    .help-box a {
+      color: #7c3aed;
+      word-break: break-all;
+    }
+    .features-list {
+      background-color: #f8fafc;
+      padding: 20px;
+      border-radius: 6px;
+      margin: 25px 0;
+    }
+    .features-list h3 {
+      color: #2d3748;
+      margin: 0 0 15px 0;
+      font-size: 16px;
+    }
+    .features-list ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #4a5568;
+    }
+    .features-list li {
+      margin-bottom: 8px;
+    }
+    .footer {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 20px;
+      margin-top: 30px;
+    }
+    .footer p {
+      color: #718096;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    .signature {
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 20px;
+      margin-top: 20px;
+    }
+    .signature p {
+      color: #a0aec0;
+      font-size: 12px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{from_name}}</h1>
+      <p>Academic Peer Review Platform</p>
+    </div>
+    
+    <div class="alert-box">
+      <h2>Welcome to Peercept!</h2>
+      <p>Your account has been successfully created.</p>
+    </div>
+    
+    <p class="content">Hello <span class="highlight">{{to_name}}</span>,</p>
+    
+    <p class="content">
+      Welcome to <strong>Peercept</strong>! Your student account has been successfully created with the email address 
+      <span class="highlight">{{to_email}}</span>.
+    </p>
+    
+    <p class="content">
+      You can now access your dashboard to view courses, submit assignments, and participate in peer reviews.
+    </p>
+    
+    <div class="button-container">
+      <a href="{{dashboard_url}}" class="button">
+        Go to Dashboard
+      </a>
+    </div>
+    
+    <div class="features-list">
+      <h3>What you can do with Peercept:</h3>
+      <ul>
+        <li><strong>Submit Assignments:</strong> Upload your work and receive feedback</li>
+        <li><strong>Peer Reviews:</strong> Review and provide feedback on classmates' work</li>
+        <li><strong>Track Progress:</strong> Monitor your submissions and review history</li>
+        <li><strong>Course Enrollment:</strong> Request to join additional courses</li>
+        <li><strong>AI-Powered Insights:</strong> Get intelligent feedback and suggestions</li>
+      </ul>
+    </div>
+    
+    <div class="help-box">
+      <p>
+        <strong>Need help getting started?</strong> Visit your dashboard and explore the available courses and assignments.
+        If you have any questions, don't hesitate to contact your instructors.
+      </p>
+    </div>
+    
+    <div class="footer">
+      <p>
+        <strong>Important:</strong> Keep your login credentials secure and don't share them with others.
+      </p>
+      <p>
+        If you have any technical issues or questions about the platform, please contact your course instructor.
+      </p>
+    </div>
+    
+    <div class="signature">
+      <p>
+        Best regards,<br>
+        <strong>{{from_name}} Team</strong>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

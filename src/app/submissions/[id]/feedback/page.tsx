@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Layout from '../../../../components/layout/Layout';
+import ChatWidget from '../../../../components/chat/ChatWidget';
+import ChatButton from '../../../../components/chat/ChatButton';
 
 interface Review {
   id: number;
@@ -15,6 +17,7 @@ interface Review {
   completedDate?: string;
   overallFeedback?: string;
   totalScore?: number;
+  isAiGenerated?: boolean;
   scores?: Array<{
     criterionId: number;
     score: number;
@@ -52,6 +55,8 @@ export default function SubmissionFeedback() {
   const [error, setError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [isChatVisible, setIsChatVisible] = useState(false);
+  const [selectedReviewId, setSelectedReviewId] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -72,6 +77,16 @@ export default function SubmissionFeedback() {
     }
   }, [submissionId, router]);
 
+  // Auto-open chat for the first available review (prefer completed) when feedback page loads
+  useEffect(() => {
+    if (!isChatVisible && userId && reviews.length > 0) {
+      const firstCompleted = reviews.find(r => r.status === 'completed');
+      const target = firstCompleted || reviews[0];
+      setSelectedReviewId(target.id);
+      setIsChatVisible(true);
+    }
+  }, [reviews, userId, isChatVisible]);
+
   const fetchData = async (userIdParam: string) => {
     try {
       setIsLoading(true);
@@ -86,7 +101,8 @@ export default function SubmissionFeedback() {
       setSubmission(submissionData);
 
       // Fetch reviews for this submission
-      const reviewsResponse = await fetch(`/api/submissions/${submissionId}/reviews`);
+      const currentUserRole = localStorage.getItem('userRole');
+      const reviewsResponse = await fetch(`/api/submissions/${submissionId}/reviews?userId=${userIdParam}&role=${currentUserRole}`);
       if (reviewsResponse.ok) {
         const reviewsData = await reviewsResponse.json();
         setReviews(reviewsData);
@@ -97,7 +113,7 @@ export default function SubmissionFeedback() {
         const rubricResponse = await fetch(`/api/assignments/${submissionData.assignmentId}/rubric`);
         if (rubricResponse.ok) {
           const rubricData = await rubricResponse.json();
-          setRubricCriteria(rubricData);
+          setRubricCriteria(rubricData.criteria || []);
         }
       }
 
@@ -128,6 +144,7 @@ export default function SubmissionFeedback() {
   };
 
   const getMaxPossibleScore = () => {
+    if (!Array.isArray(rubricCriteria)) return 0;
     return rubricCriteria.reduce((total, criterion) => total + criterion.maxPoints, 0);
   };
 
@@ -195,6 +212,8 @@ export default function SubmissionFeedback() {
                 <p className="mt-1 text-sm text-gray-500">
                   {submission.assignmentTitle} - {submission.courseName}
                 </p>
+                
+
                 <div className="mt-2 flex items-center space-x-4">
                   <span className="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-green-100 text-green-800">
                     {completedReviews.length} Review{completedReviews.length !== 1 ? 's' : ''} Completed
@@ -255,7 +274,7 @@ export default function SubmissionFeedback() {
                   <div key={review.id} className="bg-white shadow overflow-hidden sm:rounded-lg">
                     <div className="px-4 py-5 sm:px-6 bg-purple-50">
                       <h3 className="text-lg leading-6 font-medium text-purple-800">
-                        Review #{index + 1} - {review.reviewerName}
+                        Review #{index + 1} - Anonymous Reviewer
                       </h3>
                       <div className="mt-1 flex items-center space-x-4">
                         <span className="text-sm text-gray-500">
@@ -266,6 +285,20 @@ export default function SubmissionFeedback() {
                             Score: {review.totalScore}/{getMaxPossibleScore()}
                           </span>
                         )}
+                        
+                        {/* CHAT BUTTON - AI chat for AI reviews, anonymous chat for peer reviews */}
+                        <div className="ml-4">
+                          <button
+                            onClick={() => {
+                              setSelectedReviewId(review.id);
+                              setIsChatVisible(true);
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center space-x-2"
+                          >
+                            <span>💬</span>
+                            <span>Chat with Reviewer</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                     
@@ -283,7 +316,7 @@ export default function SubmissionFeedback() {
                         <div>
                           <h4 className="text-md font-medium text-gray-900 mb-4">Detailed Feedback</h4>
                           <div className="space-y-4">
-                            {rubricCriteria.map((criterion) => {
+                            {Array.isArray(rubricCriteria) && rubricCriteria.map((criterion) => {
                               const criterionScore = review.scores?.find(s => s.criterionId === criterion.id);
                               if (!criterionScore) return null;
                               
@@ -313,6 +346,33 @@ export default function SubmissionFeedback() {
           </div>
         </main>
       </div>
+      
+      {/* Chat Widget */}
+      {selectedReviewId && userId && (
+        <ChatWidget
+          reviewId={selectedReviewId}
+          currentUserId={parseInt(userId)}
+          isVisible={isChatVisible}
+          onClose={() => {
+            setIsChatVisible(false);
+            setSelectedReviewId(null);
+          }}
+        />
+      )}
+
+      {/* Fallback floating button to force-open chat */}
+      {completedReviews.length > 0 && (
+        <button
+          onClick={() => {
+            const firstCompleted = completedReviews[0];
+            setSelectedReviewId(firstCompleted.id);
+            setIsChatVisible(true);
+          }}
+          className="fixed bottom-6 right-6 bg-indigo-600 text-white px-4 py-3 rounded-full shadow-lg z-[99998]"
+        >
+          💬 Open Chat
+        </button>
+      )}
     </Layout>
   );
 } 

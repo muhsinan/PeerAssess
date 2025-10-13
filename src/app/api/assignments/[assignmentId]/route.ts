@@ -26,6 +26,9 @@ export async function GET(
         a.ai_prompts_enabled as "aiPromptsEnabled",
         a.ai_overall_prompt as "aiOverallPrompt",
         a.ai_criteria_prompt as "aiCriteriaPrompt",
+        a.ai_instructor_enabled as "aiInstructorEnabled",
+        a.ai_instructor_prompt as "aiInstructorPrompt",
+        a.feedback_chat_type as "feedbackChatType",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",
         c.course_id as "courseId",
@@ -36,6 +39,12 @@ export async function GET(
           'instructor_id', c.instructor_id,
           'description', c.description
         ) as course,
+        (
+          SELECT ar.rubric_id
+          FROM peer_assessment.assignment_rubrics ar
+          WHERE ar.assignment_id = a.assignment_id
+          LIMIT 1
+        ) as "rubricId",
         COALESCE(
           (SELECT json_agg(
             json_build_object(
@@ -78,7 +87,9 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(result.rows[0]);
+    const assignment = result.rows[0];
+    
+    return NextResponse.json(assignment);
   } catch (error) {
     console.error('Error fetching assignment details:', error);
     return NextResponse.json(
@@ -139,6 +150,29 @@ export async function PUT(
     // Use existing course ID if not provided in request
     const courseId = body.courseId || checkResult.rows[0].course_id;
 
+    // Validate rubric if provided
+    if (body.rubricId !== undefined && body.rubricId !== null && body.rubricId !== '') {
+      if (isNaN(parseInt(String(body.rubricId))) || parseInt(String(body.rubricId)) <= 0) {
+        return NextResponse.json(
+          { error: 'Invalid rubric ID' },
+          { status: 400 }
+        );
+      }
+
+      // Check that rubric exists
+      const rubricCheck = await pool.query(
+        'SELECT rubric_id FROM peer_assessment.rubrics WHERE rubric_id = $1',
+        [body.rubricId]
+      );
+      
+      if (rubricCheck.rows.length === 0) {
+        return NextResponse.json(
+          { error: 'Rubric not found' },
+          { status: 404 }
+        );
+      }
+    }
+
     // Update assignment
     const updateQuery = `
       UPDATE peer_assessment.assignments
@@ -150,8 +184,11 @@ export async function PUT(
         ai_prompts_enabled = $5,
         ai_overall_prompt = $6,
         ai_criteria_prompt = $7,
+        ai_instructor_enabled = $8,
+        ai_instructor_prompt = $9,
+        feedback_chat_type = $10,
         updated_at = NOW()
-      WHERE assignment_id = $8
+      WHERE assignment_id = $11
       RETURNING assignment_id as id
     `;
     
@@ -163,10 +200,28 @@ export async function PUT(
       body.aiPromptsEnabled ?? true,
       body.aiOverallPrompt?.trim() || null,
       body.aiCriteriaPrompt?.trim() || null,
+      body.aiInstructorEnabled ?? true,
+      body.aiInstructorPrompt?.trim() || null,
+      body.feedbackChatType || 'ai',
       assignmentId
     ];
     
     const updateResult = await pool.query(updateQuery, updateValues);
+
+    // Handle rubric assignment updates
+    // First, remove existing rubric associations
+    await pool.query(
+      'DELETE FROM peer_assessment.assignment_rubrics WHERE assignment_id = $1',
+      [assignmentId]
+    );
+
+    // If rubric was provided, create new association
+    if (body.rubricId && body.rubricId !== '') {
+      await pool.query(
+        'INSERT INTO peer_assessment.assignment_rubrics (assignment_id, rubric_id) VALUES ($1, $2)',
+        [assignmentId, body.rubricId]
+      );
+    }
 
     // Fetch the updated assignment
     const getUpdatedAssignment = `
@@ -178,10 +233,19 @@ export async function PUT(
         a.ai_prompts_enabled as "aiPromptsEnabled",
         a.ai_overall_prompt as "aiOverallPrompt",
         a.ai_criteria_prompt as "aiCriteriaPrompt",
+        a.ai_instructor_enabled as "aiInstructorEnabled",
+        a.ai_instructor_prompt as "aiInstructorPrompt",
+        a.feedback_chat_type as "feedbackChatType",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",
         c.course_id as "courseId",
-        c.name as "courseName"
+        c.name as "courseName",
+        (
+          SELECT ar.rubric_id
+          FROM peer_assessment.assignment_rubrics ar
+          WHERE ar.assignment_id = a.assignment_id
+          LIMIT 1
+        ) as "rubricId"
       FROM 
         peer_assessment.assignments a
       JOIN 

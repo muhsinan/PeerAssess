@@ -18,7 +18,7 @@ export default function Home() {
                 <span className="block text-indigo-300">assessment experience</span>
               </h1>
               <p className="mt-6 text-xl leading-8 text-gray-100">
-                PeerAssess is an AI-powered platform that enables fair, efficient, and insightful peer assessment for students and educators.
+                Peercept is an AI-powered platform that enables fair, efficient, and insightful peer assessment for students and educators.
               </p>
               <div className="mt-10 flex gap-4 items-center flex-col sm:flex-row sm:justify-center lg:justify-start">
                 <Link href="/register" 

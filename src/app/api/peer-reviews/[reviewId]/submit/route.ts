@@ -1,5 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import OpenAI from 'openai';
+
+// Function to generate AI synthesis of multiple feedbacks
+async function generateMultiFeedbackSynthesis(reviews: any[]) {
+  try {
+    // Don't synthesize if there's only one review or no reviews
+    if (!reviews || reviews.length <= 1) {
+      return null;
+    }
+
+    // Initialize OpenAI client
+    const openai = new OpenAI({
+      apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
+    });
+
+    // Prepare combined feedback from all reviews
+    const combinedFeedback = reviews.map((review, index) => {
+      return `Review ${index + 1} (Score: ${review.total_score || 'N/A'}):
+${review.overall_feedback || 'No feedback provided'}
+
+${review.ai_feedback_synthesis ? `Previous synthesis: ${review.ai_feedback_synthesis}` : ''}`;
+    }).join('\n\n---\n\n');
+
+    const prompt = `You have received multiple peer reviews for the same submission. Please create a comprehensive synthesis that combines insights from all reviews:
+
+${combinedFeedback}
+
+Please provide a comprehensive synthesis that:
+1. Identifies consistent strengths mentioned across multiple reviews
+2. Highlights areas for improvement that multiple reviewers identified
+3. Notes any conflicting feedback and provides balanced perspective
+4. Summarizes the overall assessment in a clear, organized way
+5. Keep it focused and actionable (around 150-200 words)
+
+Format your response as a clear, well-structured summary that helps the student understand the collective feedback from their peers.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "You are an AI assistant that synthesizes multiple peer feedback into clear, actionable summaries. Focus on extracting common themes, strengths, and areas for improvement from multiple reviews to help students understand their overall performance."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 400
+    });
+
+    const synthesis = completion.choices[0]?.message?.content;
+    return synthesis?.trim() || null;
+  } catch (error) {
+    console.error('Error generating multi-feedback synthesis:', error);
+    return null;
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -127,9 +186,45 @@ export async function POST(
       // Get the submission ID for this review
       const submissionId = reviewResult.rows[0].submission_id;
 
-      // If the review is completed, check if all reviews for this submission are completed
-      // If yes, update the submission status to 'reviewed'
+      // If the review is completed, generate aggregated synthesis if multiple reviews exist
       if (status === 'completed') {
+        // Get all completed reviews for this submission to check if we need to generate synthesis
+        const allReviewsResult = await client.query(`
+          SELECT 
+            pr.review_id,
+            pr.overall_feedback,
+            pr.total_score,
+            pr.ai_feedback_synthesis,
+            pr.completed_date
+          FROM peer_assessment.peer_reviews pr
+          WHERE pr.submission_id = $1 AND pr.status = 'completed'
+          ORDER BY pr.completed_date ASC
+        `, [submissionId]);
+
+        const completedReviews = allReviewsResult.rows;
+        
+        // Generate aggregated synthesis if there are multiple reviews
+        if (completedReviews.length > 1) {
+          try {
+            const aggregatedSynthesis = await generateMultiFeedbackSynthesis(completedReviews);
+            
+            if (aggregatedSynthesis) {
+              // Save the aggregated synthesis to the submissions table
+              await client.query(`
+                UPDATE peer_assessment.submissions
+                SET 
+                  aggregated_feedback_synthesis = $1,
+                  aggregated_synthesis_generated_at = CURRENT_TIMESTAMP
+                WHERE submission_id = $2
+              `, [aggregatedSynthesis, submissionId]);
+            }
+          } catch (error) {
+            console.error('Failed to generate aggregated feedback synthesis:', error);
+            // Continue without synthesis - this is not critical for the review submission
+          }
+        }
+
+        // Check if all reviews for this submission are completed and update submission status
         const pendingReviewsResult = await client.query(`
           SELECT COUNT(*) as pending_count
           FROM peer_assessment.peer_reviews
@@ -160,21 +255,9 @@ export async function POST(
       // Commit the transaction
       await client.query('COMMIT');
 
-      // AI feedback generation would go here in a real implementation
-      let aiGeneratedFeedback = null;
-      if (status === 'completed') {
-        // Mock AI feedback for demonstration purposes
-        aiGeneratedFeedback = {
-          summary: "The AI has analyzed this peer review and it appears to be thorough and constructive.",
-          strengths: "The reviewer has provided specific feedback and examples.",
-          suggestions: "Consider providing more actionable improvement suggestions in future reviews."
-        };
-      }
-
       const review = {
         ...updateResult.rows[0],
-        scores: scoresResult.rows,
-        aiAnalysis: aiGeneratedFeedback
+        scores: scoresResult.rows
       };
 
       return NextResponse.json({

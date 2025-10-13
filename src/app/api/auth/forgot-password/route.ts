@@ -37,12 +37,21 @@ export async function POST(request: NextRequest) {
     // Generate a password reset token
     const resetToken = await createResetToken(user.user_id);
     
-    // Send password reset email
-    await sendPasswordResetEmail(user.email, user.name, resetToken);
+    // Prepare email data for EmailJS
+    const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
     
-    // Return success response
+    // Send password reset email (returns true if EmailJS is configured)
+    const emailSent = await sendPasswordResetEmail(user.email, user.name, resetToken);
+    
+    // Return success response with email data for frontend EmailJS sending
     return NextResponse.json({
-      message: 'If an account exists with that email, a password reset link has been sent'
+      message: 'If an account exists with that email, a password reset link has been sent',
+      emailData: emailSent ? {
+        to: user.email,
+        subject: 'Password Reset Request',
+        to_name: user.name,
+        reset_url: resetUrl
+      } : null
     });
   } catch (error) {
     console.error('Forgot password error:', error);

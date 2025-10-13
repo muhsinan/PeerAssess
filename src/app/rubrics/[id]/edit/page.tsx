@@ -290,7 +290,7 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
             levels: criterion.levels.map(level => ({
               id: level.id,
               description: level.description,
-              points: level.score
+              score: level.score
             }))
           }),
         });
