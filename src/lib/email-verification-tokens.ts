@@ -45,7 +45,7 @@ export const markEmailVerificationTokenAsUsed = async (token: string): Promise<b
     [token]
   );
   
-  return result.rowCount > 0;
+  return (result.rowCount ?? 0) > 0;
 };
 
 // Clean up expired tokens (can be called periodically)

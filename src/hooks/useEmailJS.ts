@@ -31,13 +31,14 @@ export const useEmailJS = () => {
     }
 
     try {
+      // Avoid duplicate keys by separating subject before spreading
+      const { subject, ...rest } = emailData;
       const templateParams = {
         to_email: emailData.to,
         from_name: 'Peercept',
-        subject: emailData.subject,
         message: `You have received an invitation.`,
-        // Include all email data as template variables
-        ...emailData
+        ...rest,
+        subject
       };
 
       const response = await emailjs.send(
@@ -65,6 +66,12 @@ export const useEmailJS = () => {
     if (passwordResetTemplateId) {
       // Use dedicated password reset template
       try {
+        const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+        if (!serviceId) {
+          console.error('EmailJS service ID not configured');
+          return false;
+        }
+        const templateId: string = passwordResetTemplateId;
         const templateParams = {
           to_email: emailData.to,
           to_name: emailData.to_name || '',
@@ -74,11 +81,7 @@ export const useEmailJS = () => {
           reset_url: emailData.reset_url || ''
         };
 
-        const response = await emailjs.send(
-          process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID,
-          passwordResetTemplateId,
-          templateParams
-        );
+        const response = await emailjs.send(serviceId, templateId, templateParams);
 
         console.log('Password reset email sent successfully via EmailJS:', response.status);
         return true;
