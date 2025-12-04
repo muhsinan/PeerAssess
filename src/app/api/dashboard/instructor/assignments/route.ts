@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         c.name as course, 
         a.due_date,
         a.course_id,
+        a.is_hidden,
         (SELECT COUNT(*) FROM peer_assessment.submissions s WHERE s.assignment_id = a.assignment_id) as submissions_count,
         (SELECT COUNT(*) FROM peer_assessment.course_enrollments ce WHERE ce.course_id = a.course_id) as total_students
       FROM 
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
         course: assignment.course,
         courseId: assignment.course_id,
         dueDate: assignment.due_date ? assignment.due_date.toISOString().split('T')[0] : '', // Format as YYYY-MM-DD
+        isHidden: assignment.is_hidden || false,
         submissionsCount: parseInt(assignment.submissions_count || '0'),
         totalStudents: parseInt(assignment.total_students || '0')
       }))

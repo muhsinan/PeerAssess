@@ -22,6 +22,9 @@ const navigation = {
     { name: 'Assignments', href: '/assignments', current: false },
     { name: 'Peer Reviews', href: '/peer-reviews', current: false },
     { name: 'Rubrics', href: '/rubrics', current: false },
+  ],
+  about: [
+    { name: 'About', href: '/about', current: false },
   ]
 };
 
@@ -109,6 +112,9 @@ export default function Navbar() {
     } else if (userRole === 'student') {
       items.push(...navigation.student);
     }
+    
+    // Add About at the end for logged-in users
+    items.push(...navigation.about);
     
     return items;
   };
@@ -221,6 +227,12 @@ export default function Navbar() {
             ) : (
               <div className="flex space-x-2">
                 <Link 
+                  href="/about" 
+                  className="text-indigo-100 hover:bg-indigo-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium"
+                >
+                  About
+                </Link>
+                <Link 
                   href="/login" 
                   className="text-indigo-100 hover:bg-indigo-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium"
                 >
@@ -252,6 +264,12 @@ export default function Navbar() {
           ))}
           {!isLoggedIn && (
             <>
+              <Link
+                href="/about"
+                className="text-indigo-200 hover:bg-indigo-700 hover:text-white block rounded-md px-3 py-2 text-base font-medium"
+              >
+                About
+              </Link>
               <Link
                 href="/login"
                 className="text-indigo-200 hover:bg-indigo-700 hover:text-white block rounded-md px-3 py-2 text-base font-medium"

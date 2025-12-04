@@ -62,6 +62,7 @@ export async function GET(
          pr.overall_feedback as "overallFeedback",
          pr.total_score as "totalScore",
          pr.is_ai_generated as "isAiGenerated",
+         pr.is_released as "isReleased",
          pr.ai_feedback_synthesis as "aiSynthesis"
        FROM peer_assessment.peer_reviews pr
        JOIN peer_assessment.users u ON pr.reviewer_id = u.user_id
@@ -84,14 +85,74 @@ export async function GET(
           [review.id]
         );
 
+        // Parse subitem data from feedback if present
+        const parsedScores = scoresResult.rows.map(score => {
+          let cleanFeedback = score.feedback || '';
+          let subitemScores = null;
+
+          // Check if feedback contains embedded subitem data
+          const subitemMatch = cleanFeedback.match(/<!--SUBITEM_DATA:(.*?)-->/s);
+          if (subitemMatch) {
+            try {
+              const subitemData = JSON.parse(subitemMatch[1]);
+              if (subitemData.type === 'subitems' && Array.isArray(subitemData.evaluations)) {
+                subitemScores = subitemData.evaluations;
+              }
+              // Remove the subitem data marker from the feedback
+              cleanFeedback = cleanFeedback.replace(/\n*<!--SUBITEM_DATA:.*?-->/s, '').trim();
+            } catch (e) {
+              console.error('Error parsing subitem data:', e);
+            }
+          }
+
+          return {
+            ...score,
+            feedback: cleanFeedback,
+            subitemScores: subitemScores
+          };
+        });
+
         return {
           ...review,
-          scores: scoresResult.rows
+          scores: parsedScores
         };
       })
     );
 
-    return NextResponse.json(reviewsWithScores);
+    // Filter unreleased AI reviews for students
+    const filteredReviews = reviewsWithScores.filter(review => {
+      // Instructors see all reviews
+      if (showRealNames) return true;
+      
+      // Students only see released AI reviews and all non-AI reviews
+      if (review.isAiGenerated && !review.isReleased) {
+        return false;
+      }
+      return true;
+    });
+
+    // Add "assessing" status reviews for unreleased AI reviews (for students)
+    const unreleasedAIReviews = reviewsWithScores.filter(review => 
+      review.isAiGenerated && !review.isReleased && !showRealNames
+    );
+
+    const assessingReviews = unreleasedAIReviews.map(review => ({
+      id: review.id,
+      submissionId: review.submissionId,
+      reviewerId: review.reviewerId,
+      reviewerName: 'AI Reviewer',
+      status: 'assessing',
+      assignedDate: review.assignedDate,
+      completedDate: null,
+      overallFeedback: null,
+      totalScore: null,
+      isAiGenerated: true,
+      isReleased: false,
+      aiSynthesis: null,
+      scores: []
+    }));
+
+    return NextResponse.json([...filteredReviews, ...assessingReviews]);
   } catch (error) {
     console.error('Error fetching submission reviews:', error);
     return NextResponse.json(

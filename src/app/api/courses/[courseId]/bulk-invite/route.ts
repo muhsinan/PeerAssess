@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { createInvitationToken } from '@/lib/invitation-tokens';
-import { sendCourseInvitationEmail } from '@/lib/email';
 
 interface InvitationResult {
   email: string;
   status: 'success' | 'error' | 'already_enrolled' | 'already_invited';
   message: string;
   name?: string;
+  invitationToken?: string;
+  courseName?: string;
+  instructorName?: string;
 }
 
 export async function POST(
@@ -124,29 +126,18 @@ export async function POST(
               message: 'Invitation already sent and still valid'
             });
           } else {
-            // Create new invitation and send email
+            // Create new invitation token for course enrollment
             const invitationToken = await createInvitationToken(parseInt(courseId), trimmedEmail, course.instructor_id);
             
-            const emailSent = await sendCourseInvitationEmail(
-              trimmedEmail, 
-              course.name, 
-              course.instructor_name, 
-              invitationToken
-            );
-            
-            if (emailSent) {
-              results.push({
-                email: trimmedEmail,
-                status: 'success',
-                message: 'Invitation sent successfully'
-              });
-            } else {
-              results.push({
-                email: trimmedEmail,
-                status: 'error',
-                message: 'Failed to send invitation email'
-              });
-            }
+            // Return token data for frontend to send email (like normal registration)
+            results.push({
+              email: trimmedEmail,
+              status: 'success',
+              message: 'Invitation token created - frontend will send email',
+              invitationToken: invitationToken,
+              courseName: course.name,
+              instructorName: course.instructor_name
+            });
           }
         }
       } catch (emailError) {

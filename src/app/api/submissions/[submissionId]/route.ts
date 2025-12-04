@@ -212,4 +212,98 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+// DELETE: Remove a submission (instructor only)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ submissionId: string }> }
+) {
+  try {
+    const { submissionId } = await params;
+    const { searchParams } = new URL(request.url);
+    const instructorId = searchParams.get('instructorId');
+    
+    if (!submissionId || isNaN(Number(submissionId))) {
+      return NextResponse.json(
+        { error: 'Invalid submission ID' },
+        { status: 400 }
+      );
+    }
+
+    if (!instructorId) {
+      return NextResponse.json(
+        { error: 'Instructor ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify the user is an instructor
+    const instructorCheck = await pool.query(
+      'SELECT role FROM peer_assessment.users WHERE user_id = $1',
+      [instructorId]
+    );
+
+    if (instructorCheck.rows.length === 0 || instructorCheck.rows[0].role !== 'instructor') {
+      return NextResponse.json(
+        { error: 'Only instructors can remove submissions' },
+        { status: 403 }
+      );
+    }
+
+    // Check if submission exists
+    const submissionCheck = await pool.query(
+      `SELECT s.submission_id, s.student_id, u.name as student_name, s.title
+       FROM peer_assessment.submissions s
+       JOIN peer_assessment.users u ON s.student_id = u.user_id
+       WHERE s.submission_id = $1`,
+      [submissionId]
+    );
+
+    if (submissionCheck.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'Submission not found' },
+        { status: 404 }
+      );
+    }
+
+    const submission = submissionCheck.rows[0];
+
+    // Delete associated peer review scores first (since they reference peer_reviews)
+    await pool.query(
+      `DELETE FROM peer_assessment.peer_review_scores 
+       WHERE review_id IN (
+         SELECT review_id FROM peer_assessment.peer_reviews WHERE submission_id = $1
+       )`,
+      [submissionId]
+    );
+
+    // Delete associated peer reviews
+    await pool.query(
+      'DELETE FROM peer_assessment.peer_reviews WHERE submission_id = $1',
+      [submissionId]
+    );
+
+    // Delete associated attachments (the files will remain on disk but DB records are removed)
+    await pool.query(
+      'DELETE FROM peer_assessment.submission_attachments WHERE submission_id = $1',
+      [submissionId]
+    );
+
+    // Delete the submission
+    await pool.query(
+      'DELETE FROM peer_assessment.submissions WHERE submission_id = $1',
+      [submissionId]
+    );
+
+    return NextResponse.json({
+      message: `Submission "${submission.title}" by ${submission.student_name} has been removed successfully`
+    });
+  } catch (error) {
+    console.error('Error deleting submission:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete submission. Please try again.' },
+      { status: 500 }
+    );
+  }
 } 

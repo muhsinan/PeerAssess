@@ -46,3 +46,7 @@ next-env.d.ts
 *.sql
 
 *.md
+
+# Uploaded files (but keep the directory structure)
+uploads/*
+!uploads/.gitkeep

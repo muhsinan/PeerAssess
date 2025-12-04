@@ -5,6 +5,30 @@ import { useRouter } from 'next/navigation';
 import Layout from '../../../components/layout/Layout';
 import Link from 'next/link';
 
+interface Subitem {
+  id: number;
+  name: string;
+  description: string;
+  points: number;
+}
+
+interface Level {
+  id: number;
+  name: string;
+  description: string;
+  score: number;
+}
+
+interface Criterion {
+  name: string;
+  description: string;
+  maxPoints: number;
+  weight: number;
+  criterionType: 'levels' | 'subitems';
+  levels: Level[];
+  subitems: Subitem[];
+}
+
 export default function CreateRubric() {
   const router = useRouter();
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -18,30 +42,7 @@ export default function CreateRubric() {
     assignmentIds: [] as number[]
   });
   
-  const [criteria, setCriteria] = useState<Array<{
-    name: string;
-    description: string;
-    maxPoints: number;
-    weight: number;
-    levels: Array<{
-      id: number;
-      description: string;
-      score: number;
-    }>;
-  }>>([
-    { 
-      name: '', 
-      description: '', 
-      maxPoints: 10, 
-      weight: 1.0,
-      levels: [
-        { id: 1, description: 'Does not meet expectations', score: Math.round(10 * 0.25) },
-        { id: 2, description: 'Partially meets expectations', score: Math.round(10 * 0.5) },
-        { id: 3, description: 'Meets expectations', score: Math.round(10 * 0.75) },
-        { id: 4, description: 'Exceeds expectations', score: 10 },
-      ]
-    }
-  ]);
+  const [criteria, setCriteria] = useState<Criterion[]>([]);
   
   const [availableAssignments, setAvailableAssignments] = useState<Array<{
     id: number;
@@ -120,8 +121,8 @@ export default function CreateRubric() {
       [field]: field === 'maxPoints' || field === 'weight' ? Number(value) : value 
     };
     
-    // If max points changed, update the default level scores proportionally
-    if (field === 'maxPoints' && typeof value === 'string') {
+    // If max points changed and it's a level-based criterion, update the default level scores proportionally
+    if (field === 'maxPoints' && typeof value === 'string' && newCriteria[index].criterionType === 'levels') {
       const maxPoints = Number(value);
       if (maxPoints > 0) {
         newCriteria[index].levels = newCriteria[index].levels.map((level, levelIndex) => ({
@@ -134,30 +135,70 @@ export default function CreateRubric() {
     setCriteria(newCriteria);
   };
 
-  // Add a new criterion
-  const addCriterion = () => {
-    const defaultMaxPoints = 10;
-    setCriteria([...criteria, { 
-      name: '', 
-      description: '', 
-      maxPoints: defaultMaxPoints, 
-      weight: 1.0, 
-      levels: [
-        { id: 1, description: 'Does not meet expectations', score: Math.round(defaultMaxPoints * 0.25) },
-        { id: 2, description: 'Partially meets expectations', score: Math.round(defaultMaxPoints * 0.5) },
-        { id: 3, description: 'Meets expectations', score: Math.round(defaultMaxPoints * 0.75) },
-        { id: 4, description: 'Exceeds expectations', score: defaultMaxPoints },
-      ] 
-    }]);
+  // Update criterion type
+  const updateCriterionType = (index: number, type: 'levels' | 'subitems') => {
+    const newCriteria = [...criteria];
+    const criterion = newCriteria[index];
+    criterion.criterionType = type;
+    
+    // Initialize with defaults if switching types and empty
+    if (type === 'levels' && criterion.levels.length === 0) {
+      const maxPoints = criterion.maxPoints || 10;
+      criterion.levels = [
+        { id: 1, name: 'Beginning', description: 'Does not meet expectations', score: Math.round(maxPoints * 0.25) },
+        { id: 2, name: 'Developing', description: 'Partially meets expectations', score: Math.round(maxPoints * 0.5) },
+        { id: 3, name: 'Proficient', description: 'Meets expectations', score: Math.round(maxPoints * 0.75) },
+        { id: 4, name: 'Exemplary', description: 'Exceeds expectations', score: maxPoints },
+      ];
+    }
+    if (type === 'subitems' && criterion.subitems.length === 0) {
+      criterion.subitems = [
+        { id: 1, name: 'Item 1', description: 'Description of this item', points: 5 },
+      ];
+    }
+    
+    setCriteria(newCriteria);
+  };
+
+  // Add a new criterion (level-based or subitem-based)
+  const addCriterion = (type: 'levels' | 'subitems' = 'levels') => {
+    const defaultMaxPoints = type === 'subitems' ? 25 : 10;
+    const newCriterion: Criterion = {
+      name: '',
+      description: '',
+      maxPoints: defaultMaxPoints,
+      weight: 1.0,
+      criterionType: type,
+      levels: type === 'levels' ? [
+        { id: 1, name: 'Beginning', description: 'Does not meet expectations', score: Math.round(defaultMaxPoints * 0.25) },
+        { id: 2, name: 'Developing', description: 'Partially meets expectations', score: Math.round(defaultMaxPoints * 0.5) },
+        { id: 3, name: 'Proficient', description: 'Meets expectations', score: Math.round(defaultMaxPoints * 0.75) },
+        { id: 4, name: 'Exemplary', description: 'Exceeds expectations', score: defaultMaxPoints },
+      ] : [],
+      subitems: type === 'subitems' ? [
+        { id: 1, name: 'Item 1', description: 'Description of this item', points: 5 },
+        { id: 2, name: 'Item 2', description: 'Description of this item', points: 5 },
+        { id: 3, name: 'Item 3', description: 'Description of this item', points: 5 },
+        { id: 4, name: 'Item 4', description: 'Description of this item', points: 10 },
+      ] : []
+    };
+    setCriteria([...criteria, newCriterion]);
   };
 
   // Remove a criterion
   const removeCriterion = (index: number) => {
-    if (criteria.length > 1) {
-      const newCriteria = [...criteria];
-      newCriteria.splice(index, 1);
-      setCriteria(newCriteria);
-    }
+    const newCriteria = [...criteria];
+    newCriteria.splice(index, 1);
+    setCriteria(newCriteria);
+  };
+
+  // Update level name
+  const updateLevelName = (criterionIndex: number, levelId: number, name: string) => {
+    const newCriteria = [...criteria];
+    newCriteria[criterionIndex].levels = newCriteria[criterionIndex].levels.map(level => 
+      level.id === levelId ? { ...level, name } : level
+    );
+    setCriteria(newCriteria);
   };
 
   // Update level description
@@ -183,13 +224,15 @@ export default function CreateRubric() {
     const newCriteria = [...criteria];
     const criterion = newCriteria[criterionIndex];
     const newLevelId = criterion.levels.length > 0 ? Math.max(...criterion.levels.map(l => l.id)) + 1 : 1;
+    const newLevelNumber = criterion.levels.length + 1;
     
-    // Calculate a reasonable default score (slightly higher than the current highest score)
+    // Calculate a reasonable default score
     const maxExistingScore = criterion.levels.length > 0 ? Math.max(...criterion.levels.map(l => l.score)) : 0;
     const defaultScore = Math.min(maxExistingScore + Math.round(criterion.maxPoints * 0.1), criterion.maxPoints);
     
     criterion.levels.push({
       id: newLevelId,
+      name: `Level ${newLevelNumber}`,
       description: 'New level description',
       score: defaultScore
     });
@@ -205,6 +248,63 @@ export default function CreateRubric() {
     }
     criterion.levels = criterion.levels.filter(level => level.id !== levelId);
     setCriteria(newCriteria);
+  };
+
+  // Add a new subitem to a criterion
+  const addSubitem = (criterionIndex: number) => {
+    const newCriteria = [...criteria];
+    const criterion = newCriteria[criterionIndex];
+    const newSubitemId = criterion.subitems.length > 0 ? Math.max(...criterion.subitems.map(s => s.id)) + 1 : 1;
+    criterion.subitems.push({
+      id: newSubitemId,
+      name: `Item ${criterion.subitems.length + 1}`,
+      description: 'Description of this item',
+      points: 5
+    });
+    setCriteria(newCriteria);
+  };
+
+  // Update subitem name
+  const updateSubitemName = (criterionIndex: number, subitemId: number, name: string) => {
+    const newCriteria = [...criteria];
+    newCriteria[criterionIndex].subitems = newCriteria[criterionIndex].subitems.map(s => 
+      s.id === subitemId ? { ...s, name } : s
+    );
+    setCriteria(newCriteria);
+  };
+
+  // Update subitem description
+  const updateSubitemDescription = (criterionIndex: number, subitemId: number, description: string) => {
+    const newCriteria = [...criteria];
+    newCriteria[criterionIndex].subitems = newCriteria[criterionIndex].subitems.map(s => 
+      s.id === subitemId ? { ...s, description } : s
+    );
+    setCriteria(newCriteria);
+  };
+
+  // Update subitem points
+  const updateSubitemPoints = (criterionIndex: number, subitemId: number, points: number) => {
+    const newCriteria = [...criteria];
+    newCriteria[criterionIndex].subitems = newCriteria[criterionIndex].subitems.map(s => 
+      s.id === subitemId ? { ...s, points } : s
+    );
+    setCriteria(newCriteria);
+  };
+
+  // Remove a subitem from a criterion
+  const removeSubitem = (criterionIndex: number, subitemId: number) => {
+    const newCriteria = [...criteria];
+    const criterion = newCriteria[criterionIndex];
+    if (criterion.subitems.length <= 1) {
+      return; // Don't remove the last subitem
+    }
+    criterion.subitems = criterion.subitems.filter(s => s.id !== subitemId);
+    setCriteria(newCriteria);
+  };
+
+  // Calculate total subitem points for a criterion
+  const getTotalSubitemPoints = (criterion: Criterion) => {
+    return criterion.subitems.reduce((sum, s) => sum + s.points, 0);
   };
 
   // Handle form submission
@@ -263,12 +363,20 @@ export default function CreateRubric() {
           body: JSON.stringify({
             title: criterion.name,
             description: criterion.description,
-            maxPoints: criterion.maxPoints,
+            maxPoints: criterion.criterionType === 'subitems' ? getTotalSubitemPoints(criterion) : criterion.maxPoints,
             weight: criterion.weight,
+            criterionType: criterion.criterionType,
             levels: criterion.levels.map(level => ({
               id: level.id,
+              name: level.name,
               description: level.description,
               score: level.score
+            })),
+            subitems: criterion.subitems.map(subitem => ({
+              id: subitem.id,
+              name: subitem.name,
+              description: subitem.description,
+              points: subitem.points
             }))
           })
         });
@@ -459,17 +567,58 @@ export default function CreateRubric() {
                     {/* Criteria Section */}
                     <div className="sm:col-span-6">
                       <div className="pb-5 border-b border-gray-200">
-                        <h3 className="text-lg leading-6 font-medium text-black">Assessment Criteria</h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          Define the criteria that will be used to evaluate submissions.
-                        </p>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <h3 className="text-lg leading-6 font-medium text-black">Assessment Criteria</h3>
+                            <p className="mt-1 text-sm text-gray-500">
+                              Define the criteria that will be used to evaluate submissions.
+                            </p>
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => addCriterion('levels')}
+                              className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                            >
+                              + Level-based
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => addCriterion('subitems')}
+                              className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            >
+                              + Subitem-based
+                            </button>
+                          </div>
+                        </div>
                       </div>
                       
-                      {criteria.map((criterion, index) => (
-                        <div key={index} className="mt-6 pt-6 border-t border-gray-200">
-                          <div className="flex justify-between items-center mb-4">
-                            <h4 className="text-md font-medium text-gray-900">Criterion {index + 1}</h4>
-                            {criteria.length > 1 && (
+                      {criteria.length === 0 ? (
+                        <div className="mt-6 text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
+                          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                          <h3 className="mt-2 text-sm font-medium text-gray-900">No criteria yet</h3>
+                          <p className="mt-1 text-sm text-gray-500">Get started by adding a criterion using the buttons above.</p>
+                          <p className="mt-2 text-xs text-gray-400">
+                            <strong>Level-based:</strong> Reviewer picks ONE level (e.g., Excellent, Good, Fair) | 
+                            <strong> Subitem-based:</strong> Reviewer checks off items in a checklist
+                          </p>
+                        </div>
+                      ) : (
+                        criteria.map((criterion, index) => (
+                          <div key={index} className="mt-6 pt-6 border-t border-gray-200">
+                            <div className="flex justify-between items-center mb-4">
+                              <div className="flex items-center space-x-3">
+                                <h4 className="text-md font-medium text-gray-900">Criterion {index + 1}</h4>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  criterion.criterionType === 'subitems' 
+                                    ? 'bg-indigo-100 text-indigo-800' 
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {criterion.criterionType === 'subitems' ? 'Subitems' : 'Levels'}
+                                </span>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => removeCriterion(index)}
@@ -477,174 +626,275 @@ export default function CreateRubric() {
                               >
                                 Remove
                               </button>
-                            )}
-                          </div>
-                          
-                          <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                            {/* Criterion Name */}
-                            <div className="sm:col-span-6">
-                              <label htmlFor={`criterion-${index}-name`} className="block text-sm font-medium text-gray-700">
-                                Name *
-                              </label>
-                              <div className="mt-1">
-                                <input
-                                  type="text"
-                                  id={`criterion-${index}-name`}
-                                  value={criterion.name}
-                                  onChange={(e) => handleCriterionChange(index, 'name', e.target.value)}
-                                  className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                  placeholder="e.g., Content Quality"
-                                  required
-                                />
-                              </div>
-                            </div>
-
-                            {/* Criterion Description */}
-                            <div className="sm:col-span-6">
-                              <label htmlFor={`criterion-${index}-description`} className="block text-sm font-medium text-gray-700">
-                                Description
-                              </label>
-                              <div className="mt-1">
-                                <textarea
-                                  id={`criterion-${index}-description`}
-                                  value={criterion.description}
-                                  onChange={(e) => handleCriterionChange(index, 'description', e.target.value)}
-                                  rows={2}
-                                  className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                  placeholder="Describe what this criterion evaluates"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Max Points */}
-                            <div className="sm:col-span-3">
-                              <label htmlFor={`criterion-${index}-points`} className="block text-sm font-medium text-gray-700">
-                                Maximum Points
-                              </label>
-                              <div className="mt-1">
-                                <input
-                                  type="number"
-                                  id={`criterion-${index}-points`}
-                                  value={criterion.maxPoints}
-                                  onChange={(e) => handleCriterionChange(index, 'maxPoints', e.target.value)}
-                                  min="1"
-                                  max="100"
-                                  className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Weight */}
-                            <div className="sm:col-span-3">
-                              <label htmlFor={`criterion-${index}-weight`} className="block text-sm font-medium text-gray-700">
-                                Weight
-                              </label>
-                              <div className="mt-1">
-                                <input
-                                  type="number"
-                                  id={`criterion-${index}-weight`}
-                                  value={criterion.weight}
-                                  onChange={(e) => handleCriterionChange(index, 'weight', e.target.value)}
-                                  min="0.1"
-                                  max="10"
-                                  step="0.1"
-                                  className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                />
-                              </div>
-                              <p className="mt-2 text-xs text-gray-500">
-                                Weight determines the relative importance of this criterion (default: 1.0)
-                              </p>
-                            </div>
-                          </div>
-                          
-                          {/* Performance Levels */}
-                          <div className="mt-6">
-                            <div className="flex justify-between items-center mb-4">
-                              <h5 className="text-sm font-medium text-gray-900">Performance Levels</h5>
-                              <button
-                                type="button"
-                                onClick={() => addLevel(index)}
-                                className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                              >
-                                Add Level
-                              </button>
                             </div>
                             
-                            <div className="bg-gray-50 rounded-md overflow-hidden">
-                              <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                  <tr>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Level
-                                    </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Description
-                                    </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Score
-                                    </th>
-                                    <th scope="col" className="relative px-6 py-3">
-                                      <span className="sr-only">Actions</span>
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                  {criterion.levels.map((level, levelIndex) => (
-                                    <tr key={level.id}>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        Level {levelIndex + 1}
-                                      </td>
-                                      <td className="px-6 py-4 text-sm text-gray-500">
-                                        <textarea
-                                          rows={2}
-                                          value={level.description}
-                                          onChange={(e) => updateLevelDescription(index, level.id, e.target.value)}
-                                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
-                                        />
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max={criterion.maxPoints}
-                                          value={level.score}
-                                          onChange={(e) => updateLevelScore(index, level.id, parseInt(e.target.value, 10) || 0)}
-                                          className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-24 sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
-                                        />
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button
-                                          type="button"
-                                          onClick={() => removeLevel(index, level.id)}
-                                          disabled={criterion.levels.length <= 1}
-                                          className={`text-red-600 hover:text-red-900 ${
-                                            criterion.levels.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
-                                          }`}
-                                        >
-                                          Remove
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                            <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                              {/* Criterion Name */}
+                              <div className="sm:col-span-2">
+                                <label htmlFor={`criterion-${index}-name`} className="block text-sm font-medium text-gray-700">
+                                  Name *
+                                </label>
+                                <div className="mt-1">
+                                  <input
+                                    type="text"
+                                    id={`criterion-${index}-name`}
+                                    value={criterion.name}
+                                    onChange={(e) => handleCriterionChange(index, 'name', e.target.value)}
+                                    className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                    placeholder="e.g., Content Quality"
+                                    required
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Grading Type */}
+                              <div className="sm:col-span-2">
+                                <label htmlFor={`criterion-${index}-type`} className="block text-sm font-medium text-gray-700">
+                                  Grading Type
+                                </label>
+                                <div className="mt-1">
+                                  <select
+                                    id={`criterion-${index}-type`}
+                                    value={criterion.criterionType}
+                                    onChange={(e) => updateCriterionType(index, e.target.value as 'levels' | 'subitems')}
+                                    className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                  >
+                                    <option value="levels">Levels (pick one)</option>
+                                    <option value="subitems">Subitems (checklist)</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Max Points - only for levels */}
+                              {criterion.criterionType === 'levels' ? (
+                                <div className="sm:col-span-2">
+                                  <label htmlFor={`criterion-${index}-points`} className="block text-sm font-medium text-gray-700">
+                                    Maximum Points
+                                  </label>
+                                  <div className="mt-1">
+                                    <input
+                                      type="number"
+                                      id={`criterion-${index}-points`}
+                                      value={criterion.maxPoints}
+                                      onChange={(e) => handleCriterionChange(index, 'maxPoints', e.target.value)}
+                                      min="1"
+                                      max="100"
+                                      className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="sm:col-span-2">
+                                  <label className="block text-sm font-medium text-gray-700">
+                                    Total Points
+                                  </label>
+                                  <div className="mt-1">
+                                    <div className="py-2 px-3 bg-gray-100 rounded-md text-sm font-medium text-gray-700">
+                                      {getTotalSubitemPoints(criterion)} pts (sum of subitems)
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Criterion Description */}
+                              <div className="sm:col-span-6">
+                                <label htmlFor={`criterion-${index}-description`} className="block text-sm font-medium text-gray-700">
+                                  Description
+                                </label>
+                                <div className="mt-1">
+                                  <textarea
+                                    id={`criterion-${index}-description`}
+                                    value={criterion.description}
+                                    onChange={(e) => handleCriterionChange(index, 'description', e.target.value)}
+                                    rows={2}
+                                    className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                    placeholder="Describe what this criterion evaluates"
+                                  />
+                                </div>
+                              </div>
                             </div>
+                            
+                            {/* Performance Levels - only for level-based criteria */}
+                            {criterion.criterionType === 'levels' && (
+                              <div className="mt-6">
+                                <div className="flex justify-between items-center mb-4">
+                                  <h5 className="text-sm font-medium text-gray-900">Performance Levels</h5>
+                                  <button
+                                    type="button"
+                                    onClick={() => addLevel(index)}
+                                    className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                                  >
+                                    Add Level
+                                  </button>
+                                </div>
+                                
+                                <div className="bg-gray-50 rounded-md overflow-hidden">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                                          Level Name
+                                        </th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                          Description
+                                        </th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                          Score
+                                        </th>
+                                        <th scope="col" className="relative px-6 py-3 w-20">
+                                          <span className="sr-only">Actions</span>
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {criterion.levels.map((level) => (
+                                        <tr key={level.id}>
+                                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                            <input
+                                              type="text"
+                                              value={level.name}
+                                              onChange={(e) => updateLevelName(index, level.id, e.target.value)}
+                                              className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                              placeholder="Level name"
+                                            />
+                                          </td>
+                                          <td className="px-6 py-4 text-sm text-gray-500">
+                                            <textarea
+                                              rows={2}
+                                              value={level.description}
+                                              onChange={(e) => updateLevelDescription(index, level.id, e.target.value)}
+                                              className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                            />
+                                          </td>
+                                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max={criterion.maxPoints}
+                                              value={level.score}
+                                              onChange={(e) => updateLevelScore(index, level.id, parseInt(e.target.value, 10) || 0)}
+                                              className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-24 sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                            />
+                                          </td>
+                                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button
+                                              type="button"
+                                              onClick={() => removeLevel(index, level.id)}
+                                              disabled={criterion.levels.length <= 1}
+                                              className={`text-red-600 hover:text-red-900 ${
+                                                criterion.levels.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                              }`}
+                                            >
+                                              Remove
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Subitems - only for subitem-based criteria */}
+                            {criterion.criterionType === 'subitems' && (
+                              <div className="mt-6">
+                                <div className="flex justify-between items-center mb-4">
+                                  <h5 className="text-sm font-medium text-gray-900">Checklist Items</h5>
+                                  <button
+                                    type="button"
+                                    onClick={() => addSubitem(index)}
+                                    className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                  >
+                                    Add Item
+                                  </button>
+                                </div>
+                                
+                                <div className="bg-gray-50 rounded-md overflow-hidden">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                                          Item Name
+                                        </th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                          Description
+                                        </th>
+                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                          Points
+                                        </th>
+                                        <th scope="col" className="relative px-6 py-3 w-20">
+                                          <span className="sr-only">Actions</span>
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {criterion.subitems.map((subitem) => (
+                                        <tr key={subitem.id}>
+                                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                            <input
+                                              type="text"
+                                              value={subitem.name}
+                                              onChange={(e) => updateSubitemName(index, subitem.id, e.target.value)}
+                                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                              placeholder="Item name"
+                                            />
+                                          </td>
+                                          <td className="px-6 py-4 text-sm text-gray-500">
+                                            <textarea
+                                              rows={2}
+                                              value={subitem.description}
+                                              onChange={(e) => updateSubitemDescription(index, subitem.id, e.target.value)}
+                                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                              placeholder="Description of what earns these points"
+                                            />
+                                          </td>
+                                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max="100"
+                                              value={subitem.points}
+                                              onChange={(e) => updateSubitemPoints(index, subitem.id, parseInt(e.target.value, 10) || 0)}
+                                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-24 sm:text-sm border-gray-300 rounded-md"
+                                            />
+                                          </td>
+                                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button
+                                              type="button"
+                                              onClick={() => removeSubitem(index, subitem.id)}
+                                              disabled={criterion.subitems.length <= 1}
+                                              className={`text-red-600 hover:text-red-900 ${
+                                                criterion.subitems.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                              }`}
+                                            >
+                                              Remove
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot className="bg-gray-100">
+                                      <tr>
+                                        <td colSpan={2} className="px-6 py-3 text-right text-sm font-medium text-gray-700">
+                                          Total Points:
+                                        </td>
+                                        <td className="px-6 py-3 text-sm font-bold text-gray-900">
+                                          {getTotalSubitemPoints(criterion)}
+                                        </td>
+                                        <td></td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                                <p className="mt-2 text-sm text-gray-500">
+                                  Reviewers will check off each item that meets the criteria. Points are summed for all checked items.
+                                </p>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
-                      
-                      <div className="mt-6">
-                        <button
-                          type="button"
-                          onClick={addCriterion}
-                          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <svg className="-ml-1 mr-2 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                          </svg>
-                          Add Criterion
-                        </button>
-                      </div>
+                        ))
+                      )}
                     </div>
                   </div>
 

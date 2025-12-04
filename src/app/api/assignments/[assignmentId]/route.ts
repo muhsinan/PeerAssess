@@ -23,11 +23,13 @@ export async function GET(
         a.title,
         a.description,
         a.due_date as "dueDate",
+        a.is_hidden as "isHidden",
         a.ai_prompts_enabled as "aiPromptsEnabled",
         a.ai_overall_prompt as "aiOverallPrompt",
         a.ai_criteria_prompt as "aiCriteriaPrompt",
         a.ai_instructor_enabled as "aiInstructorEnabled",
         a.ai_instructor_prompt as "aiInstructorPrompt",
+        a.ai_auto_review_enabled as "aiAutoReviewEnabled",
         a.feedback_chat_type as "feedbackChatType",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",
@@ -186,9 +188,11 @@ export async function PUT(
         ai_criteria_prompt = $7,
         ai_instructor_enabled = $8,
         ai_instructor_prompt = $9,
-        feedback_chat_type = $10,
+        ai_auto_review_enabled = $10,
+        feedback_chat_type = $11,
+        is_hidden = $12,
         updated_at = NOW()
-      WHERE assignment_id = $11
+      WHERE assignment_id = $13
       RETURNING assignment_id as id
     `;
     
@@ -202,7 +206,9 @@ export async function PUT(
       body.aiCriteriaPrompt?.trim() || null,
       body.aiInstructorEnabled ?? true,
       body.aiInstructorPrompt?.trim() || null,
+      body.aiAutoReviewEnabled ?? false,
       body.feedbackChatType || 'ai',
+      body.isHidden ?? false,
       assignmentId
     ];
     
@@ -230,11 +236,13 @@ export async function PUT(
         a.title,
         a.description,
         a.due_date as "dueDate",
+        a.is_hidden as "isHidden",
         a.ai_prompts_enabled as "aiPromptsEnabled",
         a.ai_overall_prompt as "aiOverallPrompt",
         a.ai_criteria_prompt as "aiCriteriaPrompt",
         a.ai_instructor_enabled as "aiInstructorEnabled",
         a.ai_instructor_prompt as "aiInstructorPrompt",
+        a.ai_auto_review_enabled as "aiAutoReviewEnabled",
         a.feedback_chat_type as "feedbackChatType",
         a.created_at as "createdAt",
         a.updated_at as "updatedAt",

@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const courseId = searchParams.get('courseId');
     const instructorId = searchParams.get('instructorId');
+    const studentId = searchParams.get('studentId'); // If provided, filter out hidden assignments
     
     let query = `
       SELECT 
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
         a.title,
         a.description,
         a.due_date,
+        a.is_hidden,
         a.created_at,
         a.updated_at,
         c.course_id,
@@ -46,6 +48,11 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
     
+    // If studentId is provided, filter out hidden assignments
+    if (studentId) {
+      query += ` AND (a.is_hidden = false OR a.is_hidden IS NULL)`;
+    }
+    
     query += ` ORDER BY a.due_date ASC`;
     
     const result = await pool.query(query, params);
@@ -56,6 +63,7 @@ export async function GET(request: NextRequest) {
         title: assignment.title,
         description: assignment.description,
         dueDate: assignment.due_date,
+        isHidden: assignment.is_hidden || false,
         courseId: assignment.course_id,
         courseName: assignment.course_name,
         instructorId: assignment.instructor_id,
@@ -79,7 +87,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Parse request body
-    const { title, description, courseId, dueDate, rubricId, aiPromptsEnabled, aiOverallPrompt, aiCriteriaPrompt, aiInstructorEnabled, aiInstructorPrompt, feedbackChatType } = await request.json();
+    const { title, description, courseId, dueDate, rubricId, aiPromptsEnabled, aiOverallPrompt, aiCriteriaPrompt, aiInstructorEnabled, aiInstructorPrompt, aiAutoReviewEnabled, feedbackChatType, isHidden } = await request.json();
     
     // Validate input
     if (!title || !title.trim()) {
@@ -142,10 +150,10 @@ export async function POST(request: NextRequest) {
     // Insert assignment into database
     const result = await pool.query(
       `INSERT INTO peer_assessment.assignments
-        (title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, ai_instructor_enabled, ai_instructor_prompt, feedback_chat_type) 
+        (title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, ai_instructor_enabled, ai_instructor_prompt, ai_auto_review_enabled, feedback_chat_type, is_hidden) 
        VALUES 
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
-       RETURNING assignment_id, title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, ai_instructor_enabled, ai_instructor_prompt, feedback_chat_type, created_at, updated_at`,
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+       RETURNING assignment_id, title, description, course_id, due_date, ai_prompts_enabled, ai_overall_prompt, ai_criteria_prompt, ai_instructor_enabled, ai_instructor_prompt, ai_auto_review_enabled, feedback_chat_type, is_hidden, created_at, updated_at`,
       [
         title.trim(), 
         description?.trim() || null, 
@@ -156,7 +164,9 @@ export async function POST(request: NextRequest) {
         aiCriteriaPrompt?.trim() || null,
         aiInstructorEnabled ?? true,
         aiInstructorPrompt?.trim() || null,
-        feedbackChatType || 'ai'
+        aiAutoReviewEnabled ?? false,
+        feedbackChatType || 'ai',
+        isHidden ?? false
       ]
     );
     
@@ -195,6 +205,7 @@ export async function POST(request: NextRequest) {
         title: newAssignment.title,
         description: newAssignment.description,
         dueDate: newAssignment.due_date,
+        isHidden: newAssignment.is_hidden || false,
         courseId: newAssignment.course_id,
         courseName: course.course_name,
         instructorId: course.instructor_id,
@@ -204,6 +215,7 @@ export async function POST(request: NextRequest) {
         aiCriteriaPrompt: newAssignment.ai_criteria_prompt,
         aiInstructorEnabled: newAssignment.ai_instructor_enabled,
         aiInstructorPrompt: newAssignment.ai_instructor_prompt,
+        aiAutoReviewEnabled: newAssignment.ai_auto_review_enabled,
         feedbackChatType: newAssignment.feedback_chat_type,
         rubricId: rubricId || null,
         submissionsCount: 0,

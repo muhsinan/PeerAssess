@@ -24,6 +24,7 @@ export async function GET(
         rc.description,
         rc.max_points AS "maxPoints",
         rc.weight,
+        COALESCE(rc.criterion_type, 'levels') AS "criterionType",
         rc.created_at AS "createdAt",
         rc.updated_at AS "updatedAt"
       FROM 
@@ -45,6 +46,7 @@ export async function GET(
     const levelsResult = await pool.query(`
       SELECT 
         level_id as id,
+        name,
         description,
         points as score,
         order_position as "orderPosition"
@@ -56,11 +58,28 @@ export async function GET(
         order_position ASC
     `, [criterionId]);
 
+    // Get subitems for this criterion
+    const subitemsResult = await pool.query(`
+      SELECT 
+        subitem_id as id,
+        name,
+        description,
+        points,
+        order_position as "orderPosition"
+      FROM 
+        peer_assessment.rubric_subitems
+      WHERE 
+        criterion_id = $1
+      ORDER BY 
+        order_position ASC
+    `, [criterionId]);
+
     return NextResponse.json({
       criterion: {
         ...criterion,
         orderPosition: criterion.id,
-        levels: levelsResult.rows
+        levels: levelsResult.rows,
+        subitems: subitemsResult.rows
       }
     });
   } catch (error) {
@@ -88,7 +107,7 @@ export async function PUT(
     }
 
     // Parse request body
-    const { title, description, maxPoints, levels } = await request.json();
+    const { title, description, maxPoints, criterionType = 'levels', levels, subitems } = await request.json();
     
     // Validate input
     if (!title || !title.trim()) {
@@ -118,35 +137,55 @@ export async function PUT(
       );
     }
 
+    // Validate criterion type
+    const validCriterionType = criterionType === 'subitems' ? 'subitems' : 'levels';
+
     // Update criterion
     await pool.query(
       `UPDATE peer_assessment.rubric_criteria 
-       SET name = $1, description = $2, max_points = $3, updated_at = NOW()
-       WHERE criterion_id = $4`,
-      [title.trim(), description?.trim() || null, maxPoints, criterionId]
+       SET name = $1, description = $2, max_points = $3, criterion_type = $4, updated_at = NOW()
+       WHERE criterion_id = $5`,
+      [title.trim(), description?.trim() || null, maxPoints, validCriterionType, criterionId]
     );
 
-    // Update performance levels if provided
-    if (levels && Array.isArray(levels)) {
-      // Delete existing levels
-      await pool.query(
-        'DELETE FROM peer_assessment.rubric_performance_levels WHERE criterion_id = $1',
-        [criterionId]
-      );
+    if (validCriterionType === 'subitems') {
+      // Delete existing subitems and levels
+      await pool.query('DELETE FROM peer_assessment.rubric_subitems WHERE criterion_id = $1', [criterionId]);
+      await pool.query('DELETE FROM peer_assessment.rubric_performance_levels WHERE criterion_id = $1', [criterionId]);
+
+      // Insert new subitems
+      if (subitems && Array.isArray(subitems)) {
+        for (let i = 0; i < subitems.length; i++) {
+          const subitem = subitems[i];
+          await pool.query(
+            `INSERT INTO peer_assessment.rubric_subitems 
+             (criterion_id, name, description, points, order_position) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [criterionId, subitem.name || `Item ${i + 1}`, subitem.description || '', subitem.points || 0, i + 1]
+          );
+        }
+      }
+    } else {
+      // Delete existing levels and subitems
+      await pool.query('DELETE FROM peer_assessment.rubric_performance_levels WHERE criterion_id = $1', [criterionId]);
+      await pool.query('DELETE FROM peer_assessment.rubric_subitems WHERE criterion_id = $1', [criterionId]);
 
       // Insert new levels
-      for (let i = 0; i < levels.length; i++) {
-        const level = levels[i];
-        await pool.query(
-          `INSERT INTO peer_assessment.rubric_performance_levels 
-           (criterion_id, description, points, order_position) 
-           VALUES ($1, $2, $3, $4)`,
-          [criterionId, level.description || '', level.score || 0, i + 1]
-        );
+      if (levels && Array.isArray(levels)) {
+        for (let i = 0; i < levels.length; i++) {
+          const level = levels[i];
+          const levelName = level.name || `Level ${i + 1}`;
+          await pool.query(
+            `INSERT INTO peer_assessment.rubric_performance_levels 
+             (criterion_id, name, description, points, order_position) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [criterionId, levelName, level.description || '', level.score || 0, i + 1]
+          );
+        }
       }
     }
 
-    // Get updated criterion with performance levels
+    // Get updated criterion
     const updatedCriterionResult = await pool.query(`
       SELECT 
         criterion_id AS id,
@@ -154,6 +193,7 @@ export async function PUT(
         description,
         max_points AS "maxPoints",
         weight,
+        COALESCE(criterion_type, 'levels') AS "criterionType",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM 
@@ -168,6 +208,7 @@ export async function PUT(
     const levelsResult = await pool.query(`
       SELECT 
         level_id as id,
+        name,
         description,
         points as score,
         order_position as "orderPosition"
@@ -179,12 +220,29 @@ export async function PUT(
         order_position ASC
     `, [criterionId]);
 
+    // Get updated subitems
+    const subitemsResult = await pool.query(`
+      SELECT 
+        subitem_id as id,
+        name,
+        description,
+        points,
+        order_position as "orderPosition"
+      FROM 
+        peer_assessment.rubric_subitems
+      WHERE 
+        criterion_id = $1
+      ORDER BY 
+        order_position ASC
+    `, [criterionId]);
+
     return NextResponse.json({
       message: 'Criterion updated successfully',
       criterion: {
         ...updatedCriterion,
         orderPosition: updatedCriterion.id,
-        levels: levelsResult.rows
+        levels: levelsResult.rows,
+        subitems: subitemsResult.rows
       }
     });
   } catch (error) {

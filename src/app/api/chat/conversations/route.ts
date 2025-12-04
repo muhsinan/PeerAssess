@@ -96,10 +96,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Create or get existing conversation for a review
+// POST: Create or get existing conversation for a review (optionally for a specific criterion/subitem)
 export async function POST(request: NextRequest) {
   try {
-    const { reviewId, userId } = await request.json();
+    const { reviewId, userId, criterionId, subitemId } = await request.json();
     
     if (!reviewId || isNaN(Number(reviewId))) {
       return NextResponse.json(
@@ -115,12 +115,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if conversation already exists for this review
+    // Validate criterionId and subitemId if provided
+    const parsedCriterionId = criterionId ? Number(criterionId) : null;
+    const parsedSubitemId = subitemId ? Number(subitemId) : null;
+    
+    if (criterionId && isNaN(parsedCriterionId!)) {
+      return NextResponse.json(
+        { error: 'Invalid criterion ID' },
+        { status: 400 }
+      );
+    }
+    
+    if (subitemId && isNaN(parsedSubitemId!)) {
+      return NextResponse.json(
+        { error: 'Invalid subitem ID' },
+        { status: 400 }
+      );
+    }
+
+    // Check if conversation already exists for this review + criterion + subitem combination
     const existingConversation = await pool.query(`
       SELECT conversation_id as id
       FROM peer_assessment.chat_conversations
-      WHERE review_id = $1
-    `, [reviewId]);
+      WHERE review_id = $1 
+        AND (criterion_id IS NOT DISTINCT FROM $2)
+        AND (subitem_id IS NOT DISTINCT FROM $3)
+    `, [reviewId, parsedCriterionId, parsedSubitemId]);
 
     if (existingConversation.rows.length > 0) {
       return NextResponse.json({
@@ -188,28 +208,30 @@ export async function POST(request: NextRequest) {
     try {
       if (usesAIChat) {
         // Create AI conversation - use NULL for participant2_id since it's AI
-        console.log('Creating AI conversation for reviewId:', reviewId, 'submissionOwnerId:', review.submission_owner_id);
+        console.log('Creating AI conversation for reviewId:', reviewId, 'submissionOwnerId:', review.submission_owner_id, 'criterionId:', parsedCriterionId, 'subitemId:', parsedSubitemId);
         const newConversation = await pool.query(`
           INSERT INTO peer_assessment.chat_conversations (
             review_id, 
             participant1_id, 
             participant2_id, 
             is_ai_conversation, 
-            ai_assistant_id
+            ai_assistant_id,
+            criterion_id,
+            subitem_id
           )
-          VALUES ($1, $2, NULL, true, -1)
+          VALUES ($1, $2, NULL, true, -1, $3, $4)
           RETURNING conversation_id as id
-        `, [reviewId, review.submission_owner_id]);
+        `, [reviewId, review.submission_owner_id, parsedCriterionId, parsedSubitemId]);
         
         conversationId = newConversation.rows[0].id;
         console.log('AI conversation created with ID:', conversationId);
       } else {
         // Create regular peer conversation
         const newConversation = await pool.query(`
-          INSERT INTO peer_assessment.chat_conversations (review_id, participant1_id, participant2_id)
-          VALUES ($1, $2, $3)
+          INSERT INTO peer_assessment.chat_conversations (review_id, participant1_id, participant2_id, criterion_id, subitem_id)
+          VALUES ($1, $2, $3, $4, $5)
           RETURNING conversation_id as id
-        `, [reviewId, review.submission_owner_id, review.reviewer_id]);
+        `, [reviewId, review.submission_owner_id, review.reviewer_id, parsedCriterionId, parsedSubitemId]);
         
         conversationId = newConversation.rows[0].id;
       }
@@ -219,8 +241,10 @@ export async function POST(request: NextRequest) {
         const existingConversation = await pool.query(`
           SELECT conversation_id as id
           FROM peer_assessment.chat_conversations
-          WHERE review_id = $1
-        `, [reviewId]);
+          WHERE review_id = $1 
+            AND (criterion_id IS NOT DISTINCT FROM $2)
+            AND (subitem_id IS NOT DISTINCT FROM $3)
+        `, [reviewId, parsedCriterionId, parsedSubitemId]);
         
         if (existingConversation.rows.length > 0) {
           return NextResponse.json({
@@ -232,8 +256,30 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    // Add system message to start the conversation
-    const systemMessage = 'Chat conversation started. You can now discuss the peer review feedback.';
+    // Add system message to start the conversation with context
+    let systemMessage = 'Chat conversation started.';
+    if (parsedSubitemId) {
+      // Get subitem name for context
+      const subitemResult = await pool.query(`
+        SELECT rs.name as subitem_name, rc.name as criterion_name
+        FROM peer_assessment.rubric_subitems rs
+        JOIN peer_assessment.rubric_criteria rc ON rs.criterion_id = rc.criterion_id
+        WHERE rs.subitem_id = $1
+      `, [parsedSubitemId]);
+      if (subitemResult.rows.length > 0) {
+        systemMessage = `Chat started for "${subitemResult.rows[0].subitem_name}" (under ${subitemResult.rows[0].criterion_name}). Ask questions about this specific feedback item.`;
+      }
+    } else if (parsedCriterionId) {
+      // Get criterion name for context
+      const criterionResult = await pool.query(`
+        SELECT name FROM peer_assessment.rubric_criteria WHERE criterion_id = $1
+      `, [parsedCriterionId]);
+      if (criterionResult.rows.length > 0) {
+        systemMessage = `Chat started for the "${criterionResult.rows[0].name}" criterion. Ask questions about this specific feedback.`;
+      }
+    } else {
+      systemMessage = 'Chat conversation started. You can discuss the overall peer review feedback.';
+    }
     
     await pool.query(`
       INSERT INTO peer_assessment.chat_messages (conversation_id, sender_id, message_text, message_type)

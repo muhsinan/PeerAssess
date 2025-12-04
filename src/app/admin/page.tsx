@@ -7,6 +7,7 @@ import Layout from '../../components/layout/Layout';
 export default function AdminPage() {
   const router = useRouter();
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
@@ -19,10 +20,21 @@ export default function AdminPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Set loading to false when component mounts
+  // On mount, enforce admin access using localStorage (client-side guard)
   useEffect(() => {
-    setIsLoading(false);
-  }, []);
+    if (typeof window !== 'undefined') {
+      const role = localStorage.getItem('userRole');
+      const id = localStorage.getItem('userId');
+      setUserRole(role);
+      setUserId(id);
+
+      if (role !== 'admin') {
+        router.push('/dashboard');
+      } else {
+        setIsLoading(false);
+      }
+    }
+  }, [router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -84,6 +96,7 @@ export default function AdminPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(userId ? { 'x-admin-user-id': userId } : {}),
         },
         body: JSON.stringify({
           name: formData.name,

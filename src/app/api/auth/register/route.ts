@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 import { verifyInvitationToken, acceptInvitation } from '@/lib/invitation-tokens';
-import { createEmailVerificationToken } from '@/lib/email-verification-tokens';
-import { sendEmailVerificationEmail } from '@/lib/emailjs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,30 +85,124 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Create email verification token instead of creating user immediately
+    // If user has a valid invitation token, register them directly (no email verification needed)
+    if (invitation) {
+      try {
+        await pool.query('BEGIN');
+
+        // Create the user account directly
+        const userResult = await pool.query(
+          'INSERT INTO peer_assessment.users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING user_id, name, email, role',
+          [name, email, hashedPassword, 'student']
+        );
+        
+        const newUser = userResult.rows[0];
+
+        // Enroll the student in the course
+        await pool.query(
+          'INSERT INTO peer_assessment.course_enrollments (course_id, student_id) VALUES ($1, $2)',
+          [invitation.course_id, newUser.user_id]
+        );
+        
+        // Mark invitation as accepted
+        await acceptInvitation(invitationToken);
+
+        await pool.query('COMMIT');
+
+        return NextResponse.json(
+          {
+            message: 'Registration completed successfully! You have been enrolled in the course.',
+            requiresVerification: false,
+            user: {
+              id: newUser.user_id,
+              name: newUser.name,
+              email: newUser.email,
+              role: newUser.role
+            },
+            courseInfo: {
+              id: invitation.course_id,
+              name: invitation.course_name,
+              instructor: invitation.instructor_name,
+              status: 'enrolled'
+            }
+          },
+          { status: 201 }
+        );
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        console.error('Failed to register user with invitation:', error);
+        return NextResponse.json(
+          { error: 'Registration failed. Please try again.' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // For regular registration (no invitation), create user directly
     try {
-      const verificationToken = await createEmailVerificationToken(
-        email,
-        name,
-        hashedPassword,
-        selectedCourseId,
-        invitationToken
+      await pool.query('BEGIN');
+
+      // Create the user account directly
+      const userResult = await pool.query(
+        'INSERT INTO peer_assessment.users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING user_id, name, email, role',
+        [name, email, hashedPassword, 'student']
       );
+      
+      const newUser = userResult.rows[0];
 
-      console.log('Verification token created for:', email);
+      let courseInfo = null;
 
-      // Return success response with token for frontend to send email
+      // Handle course selection during registration
+      if (selectedCourseId) {
+        // Validate that the course exists
+        const courseCheck = await pool.query(
+          'SELECT course_id, name FROM peer_assessment.courses WHERE course_id = $1',
+          [selectedCourseId]
+        );
+        
+        if (courseCheck.rows.length > 0) {
+          // Create a pending enrollment request
+          await pool.query(
+            'INSERT INTO peer_assessment.pending_enrollment_requests (course_id, student_id, student_name, student_email) VALUES ($1, $2, $3, $4)',
+            [selectedCourseId, newUser.user_id, name, email]
+          );
+          
+          const courseData = await pool.query(
+            'SELECT c.course_id, c.name, u.name as instructor_name FROM peer_assessment.courses c JOIN peer_assessment.users u ON c.instructor_id = u.user_id WHERE c.course_id = $1',
+            [selectedCourseId]
+          );
+          
+          if (courseData.rows.length > 0) {
+            const course = courseData.rows[0];
+            courseInfo = {
+              id: course.course_id,
+              name: course.name,
+              instructor: course.instructor_name,
+              status: 'pending'
+            };
+          }
+        }
+      }
+
+      await pool.query('COMMIT');
+
       return NextResponse.json(
         {
-          message: 'Registration initiated! Please check your email and click the verification link to complete your registration.',
-          requiresVerification: true,
-          email: email,
-          verificationToken: verificationToken
+          message: 'Registration completed successfully!',
+          requiresVerification: false,
+          user: {
+            id: newUser.user_id,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role
+          },
+          ...(courseInfo && { courseInfo })
         },
-        { status: 200 }
+        { status: 201 }
       );
     } catch (error) {
-      console.error('Failed to create verification token:', error);
+      await pool.query('ROLLBACK');
+      console.error('Failed to register user:', error);
       return NextResponse.json(
         { error: 'Registration failed. Please try again.' },
         { status: 500 }

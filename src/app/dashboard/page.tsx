@@ -592,10 +592,43 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
         {/* Recent Feedback */}
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="px-4 py-5 sm:px-6 bg-indigo-50">
-            <h3 className="text-lg font-medium leading-6 text-indigo-800">Recent Feedback</h3>
+            <h3 className="text-lg font-medium leading-6 text-indigo-800">Feedback Received</h3>
             <p className="mt-1 text-sm text-gray-500">Feedback received on your submissions</p>
           </div>
           <div className="px-4 py-5 sm:p-6">
+            {/* Show submissions with unreleased AI reviews */}
+            {submissions && submissions.filter((s: any) => s.unreleasedAIReviewCount > 0).length > 0 && (
+              <div className="space-y-4 mb-6">
+                {submissions.filter((s: any) => s.unreleasedAIReviewCount > 0).map((submission: any) => (
+                  <div key={`assessing-${submission.id}`} className="bg-indigo-50 border-l-4 border-indigo-400 p-4 rounded-r-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center flex-1">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm font-medium text-indigo-900">{submission.title}</p>
+                          <p className="text-xs text-indigo-700 mt-1">
+                            {submission.courseName} · {submission.assignmentTitle}
+                          </p>
+                          <p className="text-xs text-indigo-600 mt-1">
+                            Feedback pending instructor release
+                          </p>
+                        </div>
+                      </div>
+                      <div className="ml-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                          Assessing
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             {receivedFeedback && receivedFeedback.length > 0 ? (
               <div className="space-y-6">
                 {receivedFeedback.map((feedback) => (
@@ -658,12 +691,12 @@ function StudentDashboard({ userId, userName }: { userId: string, userName: stri
                   </div>
                 ))}
               </div>
-            ) : (
+            ) : !submissions || submissions.filter((s: any) => s.unreleasedAIReviewCount > 0).length === 0 ? (
               <div className="text-center text-gray-500 py-4">
                 <p className="mb-2">No feedback received yet</p>
                 <p className="text-sm">You'll see peer reviews here after others review your submissions.</p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -1059,7 +1092,17 @@ function InstructorDashboard({ userName }: { userName: string }) {
                       recentAssignments.map((assignment) => (
                         <tr key={assignment.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-black">
-                            {assignment.title}
+                            <div className="flex items-center space-x-2">
+                              <span>{assignment.title}</span>
+                              {assignment.isHidden && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                  </svg>
+                                  Hidden
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-black">
                             {assignment.course}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import RubricForm from '../../../components/review/RubricForm';
-import AIReviewAnalysis from '../../../components/review/AIReviewAnalysis';
+import PeerReviewAssistantChatbox from '../../../components/review/PeerReviewAssistantChatbox';
 import Link from 'next/link';
 
 interface Submission {
@@ -15,6 +15,7 @@ interface Submission {
   studentEmail: string;
   assignmentTitle: string;
   courseName: string;
+  aiAnalysis?: string;
   attachments: Array<{
     id: number;
     fileName: string;
@@ -58,6 +59,11 @@ export default function PeerReview() {
   const [activeTab, setActiveTab] = useState('submission');
   const [submitted, setSubmitted] = useState(false);
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [reviewerId, setReviewerId] = useState<number | null>(null);
+  const [submissionAnalysis, setSubmissionAnalysis] = useState<string | null>(null);
+  const [isChatboxVisible, setIsChatboxVisible] = useState(false);
+  const [selectedCriterionForHelp, setSelectedCriterionForHelp] = useState<number | null>(null);
+  const [shouldAutoSend, setShouldAutoSend] = useState(false);
   
   // Mock rubric criteria - in real app, this would be fetched from API
   const rubricCriteria = [
@@ -102,6 +108,7 @@ export default function PeerReview() {
         
         const reviewData = await reviewResponse.json();
         const submissionId = reviewData.submissionId;
+        setReviewerId(reviewData.reviewerId);
         
         // Then fetch the submission details with attachments
         const userRole = localStorage.getItem('userRole');
@@ -112,6 +119,11 @@ export default function PeerReview() {
         
         const submissionData = await submissionResponse.json();
         setSubmission(submissionData.submission);
+        
+        // Set the AI analysis if available
+        if (submissionData.submission.aiAnalysis) {
+          setSubmissionAnalysis(submissionData.submission.aiAnalysis);
+        }
       } catch (error) {
         console.error('Error fetching review data:', error);
         setError(error instanceof Error ? error.message : 'Failed to load review data');
@@ -204,22 +216,10 @@ export default function PeerReview() {
     scores[criterion.id] !== undefined
   );
 
-  const handleAIFeedbackSelect = (criterionId: number, feedbackText: string) => {
-    // Update the feedback for the specific criterion
-    const existingFeedback = feedback[criterionId] || '';
-    
-    handleFeedbackChange(criterionId, 
-      existingFeedback ? 
-      `${existingFeedback}\n\n${feedbackText}` : 
-      feedbackText
-    );
-  };
-
-  const handleAIOverallFeedbackSelect = (feedbackText: string) => {
-    setOverallFeedback(overallFeedback ? 
-      `${overallFeedback}\n\n${feedbackText}` : 
-      feedbackText
-    );
+  const handleAIHelpRequest = (criterionId: number) => {
+    setSelectedCriterionForHelp(criterionId);
+    setShouldAutoSend(true);
+    setIsChatboxVisible(true);
   };
 
   // Loading state
@@ -333,28 +333,48 @@ export default function PeerReview() {
           </div>
 
           <div className="mt-4 border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab('submission')}
-                className={`${
-                  activeTab === 'submission'
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-black hover:text-black hover:border-gray-300'
-                } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
-              >
-                Submission
-              </button>
-              <button
-                onClick={() => setActiveTab('review')}
-                className={`${
-                  activeTab === 'review'
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-black hover:text-black hover:border-gray-300'
-                } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
-              >
-                Review Form
-              </button>
-            </nav>
+            <div className="flex items-center justify-between">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('submission')}
+                  className={`${
+                    activeTab === 'submission'
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-black hover:text-black hover:border-gray-300'
+                  } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
+                >
+                  Submission
+                </button>
+                <button
+                  onClick={() => setActiveTab('review')}
+                  className={`${
+                    activeTab === 'review'
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-black hover:text-black hover:border-gray-300'
+                  } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
+                >
+                  Review Form
+                </button>
+              </nav>
+              
+              {/* AI Assistant Toggle Button */}
+              {activeTab === 'review' && (
+                <button
+                  type="button"
+                  onClick={() => setIsChatboxVisible(!isChatboxVisible)}
+                  className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    isChatboxVisible
+                      ? 'text-white bg-purple-600 hover:bg-purple-700'
+                      : 'text-purple-700 bg-purple-100 hover:bg-purple-200'
+                  } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                  </svg>
+                  {isChatboxVisible ? 'Close' : 'AI Feedback Assistant'}
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="mt-6">
@@ -422,6 +442,7 @@ export default function PeerReview() {
                     onFeedbackChange={handleFeedbackChange}
                     initialScores={scores}
                     initialFeedback={feedback}
+                    onAIHelpRequest={handleAIHelpRequest}
                   />
                   
                   <div className="bg-white p-6 shadow rounded-lg">
@@ -440,17 +461,6 @@ export default function PeerReview() {
                     </div>
                   </div>
 
-                  {/* AI Review Analysis Component */}
-                  <AIReviewAnalysis
-                    criteria={rubricCriteria}
-                    scores={scores}
-                    feedback={feedback}
-                    overallFeedback={overallFeedback}
-                    assignment={submission}
-                    onAIFeedbackSelect={handleAIFeedbackSelect}
-                    onAIOverallFeedbackSelect={handleAIOverallFeedbackSelect}
-                  />
-                  
                   <div className="flex justify-between items-center">
                     <div>
                       {!allCriteriaScored && (
@@ -510,6 +520,24 @@ export default function PeerReview() {
           </div>
         </div>
       </div>
+      
+      {/* AI Assistant Chatbox */}
+      {reviewerId && submission && (
+        <PeerReviewAssistantChatbox
+          reviewerId={reviewerId}
+          submissionId={submission.id}
+          criteria={rubricCriteria}
+          scores={scores}
+          feedback={feedback}
+          isVisible={isChatboxVisible}
+          onClose={() => {
+            setIsChatboxVisible(false);
+            setShouldAutoSend(false);
+          }}
+          selectedCriterionId={selectedCriterionForHelp}
+          autoSendRequest={shouldAutoSend}
+        />
+      )}
     </div>
   );
 } 

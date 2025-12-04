@@ -1,7 +1,23 @@
 'use client';
 
-import { Editor } from '@tinymce/tinymce-react';
 import { useRef } from 'react';
+import dynamic from 'next/dynamic';
+
+// Dynamically import TinyMCE Editor with SSR disabled
+const Editor = dynamic(
+  () => import('@tinymce/tinymce-react').then((mod) => mod.Editor),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="border border-gray-300 rounded-md p-4 flex items-center justify-center bg-gray-50" style={{ height: '500px' }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Loading editor...</p>
+        </div>
+      </div>
+    )
+  }
+);
 
 interface RichTextEditorProps {
   initialValue?: string;
@@ -20,7 +36,7 @@ export default function RichTextEditor({
 
   return (
     <Editor
-      apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY || "5vzbklf4x3hbeb8mcumkruowbljz3slj1ynpvt2xcn2l6z2m"}
+      apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY || "5vzbklf4x3hbeb8mcumkruowbljz3slj1ynpvt2wcn2l6z2m"}
       onInit={(evt, editor) => editorRef.current = editor}
       initialValue={initialValue}
       onEditorChange={onEditorChange}
@@ -55,4 +71,4 @@ export default function RichTextEditor({
       }}
     />
   );
-} 
+}

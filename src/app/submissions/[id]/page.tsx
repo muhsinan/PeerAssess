@@ -362,7 +362,7 @@ export default function ViewSubmission() {
                                     {review.overallFeedback}
                                   </div>
                                   <div className="mt-2">
-                                    <Link href={`/reviews/${review.id}`} className="text-sm text-purple-600 hover:text-purple-900">
+                                    <Link href={`/submissions/${submissionId}/feedback`} className="text-sm text-purple-600 hover:text-purple-900">
                                       View detailed feedback
                                     </Link>
                                   </div>

@@ -8,6 +8,7 @@ import Link from 'next/link';
 function StudentPeerReviews({ userId }: { userId: string }) {
   const [assignedReviews, setAssignedReviews] = useState<any[]>([]);
   const [receivedFeedback, setReceivedFeedback] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,6 +23,7 @@ function StudentPeerReviews({ userId }: { userId: string }) {
         const data = await response.json();
         setAssignedReviews(data.assignedReviews || []);
         setReceivedFeedback(data.receivedFeedback || []);
+        setSubmissions(data.submissions || []);
         setLoading(false);
       } catch (err: any) {
         setError(err.message);
@@ -193,6 +195,43 @@ function StudentPeerReviews({ userId }: { userId: string }) {
         {/* Feedback Received */}
         <div className="mt-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Feedback Received</h2>
+          
+          {/* Show submissions with unreleased AI reviews */}
+          {submissions && submissions.filter((s: any) => s.unreleasedAIReviewCount > 0).length > 0 && (
+            <div className="mb-4 space-y-3">
+              {submissions.filter((s: any) => s.unreleasedAIReviewCount > 0).map((submission: any) => (
+                <div key={`assessing-${submission.id}`} className="bg-indigo-50 border-l-4 border-indigo-400 p-4 rounded-r-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center flex-1">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-indigo-900">{submission.title}</p>
+                        <p className="text-xs text-indigo-700 mt-1">
+                          Assignment: {submission.assignmentTitle}
+                        </p>
+                        <p className="text-xs text-indigo-700">
+                          Course: {submission.courseName}
+                        </p>
+                        <p className="text-xs text-indigo-600 mt-1">
+                          Feedback pending instructor release
+                        </p>
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                        Assessing
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
           {receivedFeedback.length > 0 ? (
             <div className="bg-white shadow overflow-hidden sm:rounded-md">
               <ul className="divide-y divide-gray-200">
@@ -277,11 +316,11 @@ function StudentPeerReviews({ userId }: { userId: string }) {
                 ))}
               </ul>
             </div>
-          ) : (
+          ) : !submissions || submissions.filter((s: any) => s.unreleasedAIReviewCount > 0).length === 0 ? (
             <div className="bg-white shadow rounded-lg p-6">
               <p className="text-center text-gray-500">No feedback received yet</p>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

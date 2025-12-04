@@ -37,6 +37,12 @@ export default function AssignmentDetailsClient({ assignmentId }: { assignmentId
         }
         
         const data = await response.json();
+        
+        // If user is a student and assignment is hidden, show error
+        if (userRole === 'student' && data.isHidden) {
+          throw new Error('This assignment is not available');
+        }
+        
         setAssignment(data);
         
         // If user is a student, check if they have already submitted
@@ -198,9 +204,19 @@ export default function AssignmentDetailsClient({ assignmentId }: { assignmentId
             <div className="px-4 py-5 sm:px-6 bg-purple-50">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h3 className="text-lg leading-6 font-medium text-purple-900">
-                    {assignment.title}
-                  </h3>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg leading-6 font-medium text-purple-900">
+                      {assignment.title}
+                    </h3>
+                    {assignment.isHidden && userRole === 'instructor' && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                        Hidden from Students
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-1 max-w-2xl text-sm text-gray-500">
                     {assignment.course?.name}
                   </p>

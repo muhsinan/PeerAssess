@@ -28,6 +28,7 @@ export default function PendingEnrollmentsPage({ params }: { params: Promise<{ i
   const [processingRequest, setProcessingRequest] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [showRejectionModal, setShowRejectionModal] = useState<number | null>(null);
+  const [isApprovingAll, setIsApprovingAll] = useState(false);
 
   // Resolve params
   useEffect(() => {
@@ -187,6 +188,60 @@ export default function PendingEnrollmentsPage({ params }: { params: Promise<{ i
     }
   };
 
+  const handleApproveAll = async () => {
+    const confirmApprove = confirm(
+      `Are you sure you want to approve all ${pendingCount} pending enrollment request(s)?`
+    );
+    
+    if (!confirmApprove) return;
+    
+    try {
+      setIsApprovingAll(true);
+      
+      const response = await fetch(`/api/courses/${courseId}/pending-enrollments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'approve_all',
+          instructorId: userId
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to approve all requests');
+      }
+      
+      const data = await response.json();
+      
+      // Update all approved requests in the list
+      setPendingRequests(prev => 
+        prev.map(req => {
+          const wasApproved = data.approved.some((approved: any) => approved.id === req.id);
+          if (wasApproved) {
+            return { ...req, status: 'approved', reviewedAt: new Date().toISOString() };
+          }
+          return req;
+        })
+      );
+      
+      // Show summary message
+      let message = `Successfully approved ${data.approved.length} enrollment request(s).`;
+      if (data.skipped.length > 0) {
+        message += `\n${data.skipped.length} request(s) were skipped.`;
+      }
+      alert(message);
+      
+    } catch (error) {
+      console.error('Error approving all requests:', error);
+      alert(error instanceof Error ? error.message : 'Failed to approve all requests');
+    } finally {
+      setIsApprovingAll(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -259,6 +314,25 @@ export default function PendingEnrollmentsPage({ params }: { params: Promise<{ i
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
                   {pendingCount} pending
                 </span>
+                {pendingCount > 0 && (
+                  <button
+                    onClick={handleApproveAll}
+                    disabled={isApprovingAll}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isApprovingAll ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Approving...
+                      </>
+                    ) : (
+                      `Accept All (${pendingCount})`
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => router.back()}
                   className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"

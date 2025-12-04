@@ -103,7 +103,7 @@ Based on the submission analysis, provide ONE brief suggestion (1-2 sentences ma
 Be very concise and actionable. Start with "💡" and keep it under 25 words if possible.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -150,15 +150,24 @@ Be very concise and actionable. Start with "💡" and keep it under 25 words if 
   }
 }
 
-// Function to generate AI response
-async function generateAIResponse(conversationId: number, reviewId: number, userMessage: string) {
+// Function to generate AI response with optional criterion/subitem context
+async function generateAIResponse(
+  conversationId: number, 
+  reviewId: number, 
+  userMessage: string,
+  criterionId?: number | null,
+  subitemId?: number | null,
+  criterionName?: string | null,
+  subitemName?: string | null
+) {
   try {
-    console.log('Starting AI response generation for reviewId:', reviewId, 'conversationId:', conversationId);
+    console.log('Starting AI response generation for reviewId:', reviewId, 'conversationId:', conversationId, 'criterionId:', criterionId, 'subitemId:', subitemId);
     
     // Get review details and feedback context
     const reviewResult = await pool.query(`
       SELECT 
         pr.overall_feedback,
+        pr.submission_id,
         s.title as submission_title,
         s.content as submission_content,
         s.ai_submission_analysis,
@@ -186,8 +195,23 @@ async function generateAIResponse(conversationId: number, reviewId: number, user
       LEFT JOIN peer_assessment.peer_review_scores prs ON pr.review_id = prs.review_id
       LEFT JOIN peer_assessment.rubric_criteria rc ON prs.criterion_id = rc.criterion_id
       WHERE pr.review_id = $1
-      GROUP BY pr.review_id, pr.overall_feedback, s.title, s.content, s.ai_submission_analysis, a.title, a.description, u.name
+      GROUP BY pr.review_id, pr.overall_feedback, pr.submission_id, s.title, s.content, s.ai_submission_analysis, a.title, a.description, u.name
     `, [reviewId]);
+    
+    // Get attachment info if any
+    let attachmentsInfo = '';
+    if (reviewResult.rows.length > 0) {
+      const attachmentsResult = await pool.query(`
+        SELECT file_name, file_type
+        FROM peer_assessment.submission_attachments
+        WHERE submission_id = $1
+        ORDER BY upload_date
+      `, [reviewResult.rows[0].submission_id]);
+      
+      if (attachmentsResult.rows.length > 0) {
+        attachmentsInfo = `\n\nATTACHED FILES:\n${attachmentsResult.rows.map(a => `- ${a.file_name} (${a.file_type})`).join('\n')}`;
+      }
+    }
 
     if (reviewResult.rows.length === 0) {
       console.error('Review not found for reviewId:', reviewId);
@@ -244,12 +268,51 @@ async function generateAIResponse(conversationId: number, reviewId: number, user
     
     console.log('OpenAI API key is configured, generating response...');
 
-    let prompt = `You are a fellow student who provided peer review feedback. You're now chatting with the student whose work you reviewed. Be helpful, encouraging, and speak like a peer - not a teacher or AI. Use casual but respectful language.
+    // Build context-aware prompt based on whether this is criterion/subitem specific
+    let feedbackContext = '';
+    if (subitemId && subitemName) {
+      // This is a subitem-specific chat
+      const subitemFeedback = criteriaFeedback.find((item: any) => 
+        item.feedback && item.feedback.includes(subitemName)
+      );
+      feedbackContext = `
+FOCUS: This conversation is specifically about the "${subitemName}" checklist item.
+${subitemFeedback ? `Feedback related to this item: ${subitemFeedback.feedback}` : ''}`;
+    } else if (criterionId && criterionName) {
+      // This is a criterion-specific chat
+      const criterionFeedback = criteriaFeedback.find((item: any) => 
+        (item.criterionName || item.criterionname) === criterionName
+      );
+      feedbackContext = `
+FOCUS: This conversation is specifically about the "${criterionName}" criterion.
+${criterionFeedback ? `Score: ${criterionFeedback.score || 0}/${criterionFeedback.maxPoints || criterionFeedback.maxpoints || 0}
+Feedback: ${criterionFeedback.feedback || 'No specific feedback provided'}` : ''}`;
+    }
+
+    // Truncate submission content if too long (keep first 8000 chars to leave room for other context)
+    const maxSubmissionLength = 8000;
+    let submissionContent = review.submission_content || '';
+    if (submissionContent.length > maxSubmissionLength) {
+      submissionContent = submissionContent.substring(0, maxSubmissionLength) + '\n\n... [Content truncated for length] ...';
+    }
+
+    let prompt = `You are a Companion chatbot. Act and talk like you are a friend or peer. Use collaborative language like "we," "us," and "our." You are NOT an instructor, tutor, or expert. Your role is to help the student understand and apply the feedback already given for their programming task.
+
+Your goal is to stimulate the student's own thinking so they can solve the problem themselves. Ask guiding questions when appropriate. Provide more detailed guidance as they need so they can progress on their task.
+
+Be encouraging, supportive, and conversational - like a study buddy who's there to help them figure things out together.
 
 CONTEXT:
 Assignment: ${review.assignment_title}
+${review.assignment_description ? `Assignment Description: ${review.assignment_description}` : ''}
 Student: ${review.student_name}
 Submission Title: ${review.submission_title}
+${feedbackContext}
+
+THE STUDENT'S SUBMISSION (their actual work/code):
+---
+${submissionContent}
+---${attachmentsInfo}
 
 YOUR PEER REVIEW FEEDBACK:
 Overall Feedback: ${review.overall_feedback}
@@ -272,19 +335,32 @@ Use this understanding to better explain your feedback choices and provide more 
 
     prompt += `
 
+IMPORTANT RULES:
+1. The submission above belongs to the STUDENT YOU ARE CHATTING WITH - it is THEIR OWN work.
+2. You should freely share, quote, and reference ANY part of their code/submission when they ask - it's theirs!
+3. If they ask "show me my code" or "give me the code" - show them the relevant parts from their submission above.
+4. Reference specific parts of their code/work when explaining feedback.
+5. Point to specific lines or sections that relate to the feedback.
+6. Give concrete examples from their submission when explaining what could be improved.
+7. Be specific rather than generic - use their actual code/content in your explanations.
+8. NEVER refuse to share their own code with them - they own it!`;
+
+
+    prompt += `
+
 CONVERSATION HISTORY:
 ${conversationContext}
 
 CURRENT STUDENT MESSAGE: ${userMessage}
 
-Respond as the peer reviewer who gave this feedback. Keep it short and casual like texting a classmate - max 2-3 sentences. Use "I" statements (e.g., "I thought...", "I noticed...", "I gave you that score because..."). Be encouraging but brief. Sound like a real student, not formal or wordy.`;
+Respond as a supportive companion helping them understand the feedback. Use collaborative language ("we," "let's," "together"). Ask guiding questions to stimulate their thinking when appropriate. If they're stuck, provide hints before giving full answers. If they ask for code or specific parts of their submission, show them. Be encouraging and help them see how they can improve. Sound like a friend, not a teacher.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "You are a college student texting a classmate about peer review feedback you gave them. Keep responses SHORT (1-3 sentences max), casual, and conversational. Use 'I' statements about your review. Sound like a real student - not an AI or teacher."
+          content: "You are a Companion chatbot - a friendly peer helping a student understand feedback on their programming work. Use collaborative language (we, us, our, let's). You are NOT an instructor or tutor. Stimulate their thinking with guiding questions. The submission in context is THEIR OWN work - freely share or reference any part when they ask. Help them understand how to improve, but encourage them to think through solutions themselves first."
         },
         {
           role: "user",
@@ -292,7 +368,7 @@ Respond as the peer reviewer who gave this feedback. Keep it short and casual li
         }
       ],
       temperature: 0.8,
-      max_tokens: 100
+      max_tokens: 1000
     });
 
     const aiResponseText = completion.choices[0]?.message?.content;
@@ -364,11 +440,24 @@ export async function POST(
       );
     }
 
-    // Verify user is a participant in this conversation and get conversation details
+    // Verify user is a participant in this conversation and get conversation details including criterion/subitem
     const participantCheck = await pool.query(`
-      SELECT cc.is_ai_conversation, cc.review_id, cc.participant1_id, cc.participant2_id, pr.reviewer_id
+      SELECT 
+        cc.is_ai_conversation, 
+        cc.review_id, 
+        cc.participant1_id, 
+        cc.participant2_id, 
+        cc.criterion_id,
+        cc.subitem_id,
+        pr.reviewer_id,
+        rc.name as criterion_name,
+        rc.description as criterion_description,
+        rs.name as subitem_name,
+        rs.description as subitem_description
       FROM peer_assessment.chat_conversations cc
       JOIN peer_assessment.peer_reviews pr ON cc.review_id = pr.review_id
+      LEFT JOIN peer_assessment.rubric_criteria rc ON cc.criterion_id = rc.criterion_id
+      LEFT JOIN peer_assessment.rubric_subitems rs ON cc.subitem_id = rs.subitem_id
       WHERE cc.conversation_id = $1 
         AND (cc.participant1_id = $2 OR (cc.participant2_id = $2 AND NOT cc.is_ai_conversation))
     `, [conversationId, senderId]);
@@ -414,11 +503,19 @@ export async function POST(
 
     const responses = [newMessage];
 
-    // If this is an AI conversation, generate and send AI response
+    // If this is an AI conversation, generate and send AI response with criterion/subitem context
     if (conversation.is_ai_conversation) {
-      console.log('AI conversation detected, generating response for reviewId:', conversation.review_id);
+      console.log('AI conversation detected, generating response for reviewId:', conversation.review_id, 'criterionId:', conversation.criterion_id, 'subitemId:', conversation.subitem_id);
       try {
-        const aiResponse = await generateAIResponse(parseInt(conversationId), conversation.review_id, messageText);
+        const aiResponse = await generateAIResponse(
+          parseInt(conversationId), 
+          conversation.review_id, 
+          messageText,
+          conversation.criterion_id,
+          conversation.subitem_id,
+          conversation.criterion_name,
+          conversation.subitem_name
+        );
         if (aiResponse) {
           console.log('AI response generated successfully:', aiResponse.id);
           responses.push(aiResponse);

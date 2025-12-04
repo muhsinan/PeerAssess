@@ -18,6 +18,7 @@ export default function CreateAssignment() {
     courseId: '',
     dueDate: '',
     rubricId: '',
+    isHidden: false,
     aiPromptsEnabled: true,
     aiOverallPrompt: `Please provide constructive suggestions to improve the overall feedback. Focus on making the feedback more helpful, specific, and balanced. Keep your response concise and actionable.`,
     aiCriteriaPrompt: `Your tasks:
@@ -29,6 +30,7 @@ Format your response as:
 1. [suggestion]. Revised Feedback Example: "[your rewritten reviewer feedback here]"`,
     aiInstructorEnabled: true,
     aiInstructorPrompt: '',
+    aiAutoReviewEnabled: false,
     feedbackChatType: 'ai'
   });
   
@@ -157,11 +159,13 @@ Format your response as:
           description: formData.description,
           courseId: parseInt(formData.courseId),
           dueDate: formData.dueDate,
+          isHidden: formData.isHidden,
           aiPromptsEnabled: formData.aiPromptsEnabled,
           aiOverallPrompt: formData.aiOverallPrompt,
           aiCriteriaPrompt: formData.aiCriteriaPrompt,
           aiInstructorEnabled: formData.aiInstructorEnabled,
           aiInstructorPrompt: formData.aiInstructorPrompt,
+          aiAutoReviewEnabled: formData.aiAutoReviewEnabled,
           feedbackChatType: formData.feedbackChatType,
           rubricId: formData.rubricId ? parseInt(formData.rubricId) : null
         })
@@ -411,6 +415,45 @@ Format your response as:
                       </div>
                     </div>
 
+                    {/* Visibility Settings */}
+                    <div className="sm:col-span-6">
+                      <div className="border-t border-gray-200 pt-6">
+                        <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 mr-2 text-gray-600">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.573-3.007-9.963-7.178z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Visibility Settings
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Control who can see this assignment.
+                        </p>
+                        
+                        <div className="mt-4">
+                          <div className="flex items-center">
+                            <input
+                              id="isHidden"
+                              name="isHidden"
+                              type="checkbox"
+                              checked={formData.isHidden}
+                              onChange={handleInputChange}
+                              className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                            />
+                            <label htmlFor="isHidden" className="ml-2 block text-sm text-gray-900">
+                              Hide this assignment from students
+                            </label>
+                          </div>
+                          {formData.isHidden && (
+                            <div className="mt-3 ml-6 p-3 bg-orange-50 rounded-md">
+                              <p className="text-xs text-orange-800">
+                                <strong>Hidden Assignment:</strong> This assignment will only be visible to instructors. Students will not see it in their assignment list or dashboard until you make it visible.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
                     {/* AI Configuration Section */}
                     <div className="sm:col-span-6">
                       <div className="border-t border-gray-200 pt-6">
@@ -542,6 +585,44 @@ Format your response as:
                               </div>
                             </div>
                           )}
+                        </div>
+
+                        {/* AI Auto-Review Configuration */}
+                        <div className="mt-8 border-t border-gray-200 pt-6">
+                          <h4 className="text-md font-medium text-gray-900 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2 text-indigo-600">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                            </svg>
+                            AI Auto-Review (Instant AI Feedback)
+                          </h4>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Automatically generate AI peer reviews when students submit their work. Reviews remain hidden until you release them.
+                          </p>
+                          
+                          {/* Enable Auto-Review Toggle */}
+                          <div className="mt-4">
+                            <div className="flex items-center">
+                              <input
+                                id="aiAutoReviewEnabled"
+                                name="aiAutoReviewEnabled"
+                                type="checkbox"
+                                checked={formData.aiAutoReviewEnabled}
+                                onChange={handleInputChange}
+                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                              />
+                              <label htmlFor="aiAutoReviewEnabled" className="ml-2 block text-sm text-gray-900">
+                                Enable automatic AI review generation on submission
+                              </label>
+                            </div>
+                            {formData.aiAutoReviewEnabled && (
+                              <div className="mt-3 ml-6 p-3 bg-indigo-50 rounded-md">
+                                <p className="text-xs text-indigo-800">
+                                  <strong>How it works:</strong> When students submit, AI reviews are generated instantly using the same prompts as manual instructor reviews. 
+                                  Students will see &quot;Assessing...&quot; status until you release the reviews from the assignment submissions page.
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Feedback Chat Configuration */}

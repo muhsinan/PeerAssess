@@ -5,16 +5,27 @@ import { useRouter } from 'next/navigation';
 import Layout from '../../../../components/layout/Layout';
 import Link from 'next/link';
 
+interface RubricSubitem {
+  id: number;
+  name: string;
+  description: string;
+  points: number;
+}
+
 interface RubricCriterion {
   id: number;
   title: string;
   description: string;
   points: number;
+  criterionType: 'levels' | 'subitems';
+  isNew?: boolean; // Flag to track if this criterion needs to be created vs updated
   levels: {
     id: number;
+    name: string;
     description: string;
     score: number;
   }[];
+  subitems: RubricSubitem[];
 }
 
 export default function EditRubric({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +37,7 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
   const [rubricDescription, setRubricDescription] = useState('');
   const [assignmentIds, setAssignmentIds] = useState<number[]>([]);
   const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  const [originalCriteriaIds, setOriginalCriteriaIds] = useState<number[]>([]); // Track original IDs for deletion
   const [availableAssignments, setAvailableAssignments] = useState<Array<{
     id: number;
     title: string;
@@ -74,17 +86,29 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
       setRubricName(data.name);
       setRubricDescription(data.description || '');
       setAssignmentIds(data.assignments ? data.assignments.map((a: any) => a.id) : []);
-      setCriteria(data.criteria ? data.criteria.map((criterion: any) => ({
+      const mappedCriteria = data.criteria ? data.criteria.map((criterion: any) => ({
         id: criterion.id,
         title: criterion.name,
         description: criterion.description || '',
         points: criterion.max_points,
-        levels: criterion.levels ? criterion.levels.map((level: any) => ({
+        criterionType: criterion.criterionType || 'levels',
+        levels: criterion.levels ? criterion.levels.map((level: any, index: number) => ({
           id: level.id,
+          name: level.name || `Level ${index + 1}`,
           description: level.description,
           score: level.score
+        })) : [],
+        subitems: criterion.subitems ? criterion.subitems.map((subitem: any) => ({
+          id: subitem.id,
+          name: subitem.name,
+          description: subitem.description || '',
+          points: subitem.points
         })) : []
-      })) : []);
+      })) : [];
+      
+      setCriteria(mappedCriteria);
+      // Store original criteria IDs for tracking deletions
+      setOriginalCriteriaIds(mappedCriteria.filter((c: RubricCriterion) => c.id > 0).map((c: RubricCriterion) => c.id));
       
       setIsLoading(false);
       setIsDirty(false);
@@ -132,22 +156,55 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
   };
 
   // Add a new criterion
-  const addCriterion = () => {
-    const newId = criteria.length > 0 ? Math.max(...criteria.map(c => c.id)) + 1 : 1;
+  const addCriterion = (type: 'levels' | 'subitems' = 'levels') => {
+    // Use negative IDs for new criteria to distinguish from existing ones
+    const newId = criteria.length > 0 ? -Date.now() : -1;
     const newCriterion: RubricCriterion = {
       id: newId,
       title: 'New Criterion',
       description: 'Description of this criterion',
-      points: 10,
-      levels: [
-        { id: 1, description: 'Does not meet expectations', score: 2 },
-        { id: 2, description: 'Partially meets expectations', score: 5 },
-        { id: 3, description: 'Meets expectations', score: 8 },
-        { id: 4, description: 'Exceeds expectations', score: 10 },
-      ]
+      points: type === 'subitems' ? 25 : 10,
+      criterionType: type,
+      isNew: true,
+      levels: type === 'levels' ? [
+        { id: 1, name: 'Beginning', description: 'Does not meet expectations', score: 2 },
+        { id: 2, name: 'Developing', description: 'Partially meets expectations', score: 5 },
+        { id: 3, name: 'Proficient', description: 'Meets expectations', score: 8 },
+        { id: 4, name: 'Exemplary', description: 'Exceeds expectations', score: 10 },
+      ] : [],
+      subitems: type === 'subitems' ? [
+        { id: 1, name: 'Item 1', description: 'Description of this item', points: 5 },
+        { id: 2, name: 'Item 2', description: 'Description of this item', points: 5 },
+        { id: 3, name: 'Item 3', description: 'Description of this item', points: 5 },
+        { id: 4, name: 'Item 4', description: 'Description of this item', points: 10 },
+      ] : []
     };
     
     setCriteria([...criteria, newCriterion]);
+    setIsDirty(true);
+  };
+
+  // Update criterion type
+  const updateCriterionType = (id: number, type: 'levels' | 'subitems') => {
+    setCriteria(criteria.map(c => {
+      if (c.id === id) {
+        return {
+          ...c,
+          criterionType: type,
+          // Clear/reset the non-selected type
+          levels: type === 'levels' && c.levels.length === 0 ? [
+            { id: 1, name: 'Beginning', description: 'Does not meet expectations', score: Math.round(c.points * 0.2) },
+            { id: 2, name: 'Developing', description: 'Partially meets expectations', score: Math.round(c.points * 0.5) },
+            { id: 3, name: 'Proficient', description: 'Meets expectations', score: Math.round(c.points * 0.8) },
+            { id: 4, name: 'Exemplary', description: 'Exceeds expectations', score: c.points },
+          ] : c.levels,
+          subitems: type === 'subitems' && c.subitems.length === 0 ? [
+            { id: 1, name: 'Item 1', description: 'Description', points: Math.round(c.points / 4) },
+          ] : c.subitems
+        };
+      }
+      return c;
+    }));
     setIsDirty(true);
   };
 
@@ -216,12 +273,14 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
     setCriteria(criteria.map(c => {
       if (c.id === criterionId) {
         const newLevelId = c.levels.length > 0 ? Math.max(...c.levels.map(l => l.id)) + 1 : 1;
+        const newLevelNumber = c.levels.length + 1;
         return {
           ...c,
           levels: [
             ...c.levels,
             { 
               id: newLevelId, 
+              name: `Level ${newLevelNumber}`,
               description: 'New level description', 
               score: Math.round(c.points / 4) // Default to 1/4 of points
             }
@@ -230,6 +289,21 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
       }
       return c;
     }));
+    setIsDirty(true);
+  };
+
+  // Update level name
+  const updateLevelName = (criterionId: number, levelId: number, name: string) => {
+    setCriteria(criteria.map(c => 
+      c.id === criterionId 
+        ? { 
+            ...c, 
+            levels: c.levels.map(l => 
+              l.id === levelId ? { ...l, name } : l
+            ) 
+          } 
+        : c
+    ));
     setIsDirty(true);
   };
 
@@ -248,6 +322,96 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
       return c;
     }));
     setIsDirty(true);
+  };
+
+  // Add a new subitem to a criterion
+  const addSubitem = (criterionId: number) => {
+    setCriteria(criteria.map(c => {
+      if (c.id === criterionId) {
+        const newSubitemId = c.subitems.length > 0 ? Math.max(...c.subitems.map(s => s.id)) + 1 : 1;
+        return {
+          ...c,
+          subitems: [
+            ...c.subitems,
+            { 
+              id: newSubitemId, 
+              name: `Item ${c.subitems.length + 1}`,
+              description: 'Description of this item', 
+              points: 5
+            }
+          ]
+        };
+      }
+      return c;
+    }));
+    setIsDirty(true);
+  };
+
+  // Update subitem name
+  const updateSubitemName = (criterionId: number, subitemId: number, name: string) => {
+    setCriteria(criteria.map(c => 
+      c.id === criterionId 
+        ? { 
+            ...c, 
+            subitems: c.subitems.map(s => 
+              s.id === subitemId ? { ...s, name } : s
+            ) 
+          } 
+        : c
+    ));
+    setIsDirty(true);
+  };
+
+  // Update subitem description
+  const updateSubitemDescription = (criterionId: number, subitemId: number, description: string) => {
+    setCriteria(criteria.map(c => 
+      c.id === criterionId 
+        ? { 
+            ...c, 
+            subitems: c.subitems.map(s => 
+              s.id === subitemId ? { ...s, description } : s
+            ) 
+          } 
+        : c
+    ));
+    setIsDirty(true);
+  };
+
+  // Update subitem points
+  const updateSubitemPoints = (criterionId: number, subitemId: number, points: number) => {
+    setCriteria(criteria.map(c => 
+      c.id === criterionId 
+        ? { 
+            ...c, 
+            subitems: c.subitems.map(s => 
+              s.id === subitemId ? { ...s, points } : s
+            ) 
+          } 
+        : c
+    ));
+    setIsDirty(true);
+  };
+
+  // Remove a subitem from a criterion
+  const removeSubitem = (criterionId: number, subitemId: number) => {
+    setCriteria(criteria.map(c => {
+      if (c.id === criterionId) {
+        if (c.subitems.length <= 1) {
+          return c; // Don't remove the last subitem
+        }
+        return {
+          ...c,
+          subitems: c.subitems.filter(s => s.id !== subitemId)
+        };
+      }
+      return c;
+    }));
+    setIsDirty(true);
+  };
+
+  // Calculate total subitem points for a criterion
+  const getTotalSubitemPoints = (criterion: RubricCriterion) => {
+    return criterion.subitems.reduce((sum, s) => sum + s.points, 0);
   };
 
   // Save changes
@@ -274,34 +438,76 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
         throw new Error(errorData.error || 'Failed to update rubric');
       }
       
-      // Update criteria - in a real implementation, we'd need to handle
-      // creating, updating, and deleting criteria as needed
+      // Find criteria that need to be deleted (were in original list but not in current list)
+      const currentCriteriaIds = criteria.filter(c => c.id > 0 && !c.isNew).map(c => c.id);
+      const criteriaToDelete = originalCriteriaIds.filter(id => !currentCriteriaIds.includes(id));
+      
+      // Delete removed criteria
+      const deletePromises = criteriaToDelete.map(async (criterionId) => {
+        const deleteResponse = await fetch(`/api/rubrics/${rubricId}/criteria/${criterionId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!deleteResponse.ok) {
+          const errorData = await deleteResponse.json();
+          throw new Error(errorData.error || 'Failed to delete criterion');
+        }
+        
+        return deleteResponse.json();
+      });
+      
+      await Promise.all(deletePromises);
+      
+      // Handle criteria - create new ones (POST) and update existing ones (PUT)
       const criteriaPromises = criteria.map(async (criterion) => {
-        // This is simplified - in a real app, we'd need to check if this is a new or existing criterion
-        const criterionResponse = await fetch(`/api/rubrics/${rubricId}/criteria/${criterion.id}`, {
-          method: 'PUT',
+        const isNewCriterion = criterion.isNew || criterion.id < 0;
+        
+        const url = isNewCriterion 
+          ? `/api/rubrics/${rubricId}/criteria`
+          : `/api/rubrics/${rubricId}/criteria/${criterion.id}`;
+        
+        const method = isNewCriterion ? 'POST' : 'PUT';
+        
+        const criterionResponse = await fetch(url, {
+          method,
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             title: criterion.title,
             description: criterion.description,
-            maxPoints: criterion.points,
+            maxPoints: criterion.criterionType === 'subitems' ? getTotalSubitemPoints(criterion) : criterion.points,
+            criterionType: criterion.criterionType,
             levels: criterion.levels.map(level => ({
               id: level.id,
+              name: level.name,
               description: level.description,
               score: level.score
+            })),
+            subitems: criterion.subitems.map(subitem => ({
+              id: subitem.id,
+              name: subitem.name,
+              description: subitem.description,
+              points: subitem.points
             }))
           }),
         });
         
         if (!criterionResponse.ok) {
           const errorData = await criterionResponse.json();
-          throw new Error(errorData.error || 'Failed to update criterion');
+          throw new Error(errorData.error || `Failed to ${isNewCriterion ? 'create' : 'update'} criterion`);
         }
+        
+        return criterionResponse.json();
       });
       
       await Promise.all(criteriaPromises);
+      
+      // Refresh the data to get the correct IDs for newly created criteria
+      await fetchRubricData();
       
       setIsLoading(false);
       setIsDirty(false);
@@ -580,13 +786,22 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-lg font-medium text-gray-900">Assessment Criteria</h2>
-                <button
-                  type="button"
-                  onClick={addCriterion}
-                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  Add Criterion
-                </button>
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => addCriterion('levels')}
+                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                  >
+                    + Level-based
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addCriterion('subitems')}
+                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    + Subitem-based
+                  </button>
+                </div>
               </div>
               
               {criteria.length === 0 ? (
@@ -599,13 +814,22 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
                 criteria.map((criterion) => (
                   <div key={criterion.id} className="bg-white shadow overflow-hidden sm:rounded-lg">
                     <div className="px-4 py-5 sm:px-6 bg-gray-50 flex justify-between items-center">
-                      <div>
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">
-                          {criterion.title}
-                        </h3>
-                        <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                          {criterion.points} points
-                        </p>
+                      <div className="flex items-center space-x-3">
+                        <div>
+                          <h3 className="text-lg leading-6 font-medium text-gray-900">
+                            {criterion.title}
+                          </h3>
+                          <p className="mt-1 max-w-2xl text-sm text-gray-500">
+                            {criterion.criterionType === 'subitems' ? getTotalSubitemPoints(criterion) : criterion.points} points
+                          </p>
+                        </div>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          criterion.criterionType === 'subitems' 
+                            ? 'bg-indigo-100 text-indigo-800' 
+                            : 'bg-purple-100 text-purple-800'
+                        }`}>
+                          {criterion.criterionType === 'subitems' ? 'Subitems' : 'Levels'}
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -616,7 +840,7 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
                       </button>
                     </div>
                     <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-                      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
                         <div>
                           <label htmlFor={`criterion-title-${criterion.id}`} className="block text-sm font-medium text-gray-700">
                             Title
@@ -633,23 +857,54 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
                           </div>
                         </div>
                         <div>
-                          <label htmlFor={`criterion-points-${criterion.id}`} className="block text-sm font-medium text-gray-700">
-                            Points
+                          <label htmlFor={`criterion-type-${criterion.id}`} className="block text-sm font-medium text-gray-700">
+                            Grading Type
                           </label>
                           <div className="mt-1">
-                            <input
-                              type="number"
-                              name={`criterion-points-${criterion.id}`}
-                              id={`criterion-points-${criterion.id}`}
-                              min="1"
-                              max="100"
-                              value={criterion.points}
-                              onChange={(e) => updateCriterionPoints(criterion.id, parseInt(e.target.value, 10) || 0)}
-                              className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
-                            />
+                            <select
+                              id={`criterion-type-${criterion.id}`}
+                              name={`criterion-type-${criterion.id}`}
+                              value={criterion.criterionType}
+                              onChange={(e) => updateCriterionType(criterion.id, e.target.value as 'levels' | 'subitems')}
+                              className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            >
+                              <option value="levels">Levels (pick one)</option>
+                              <option value="subitems">Subitems (checklist)</option>
+                            </select>
                           </div>
                         </div>
-                        <div className="sm:col-span-2">
+                        {criterion.criterionType === 'levels' && (
+                          <div>
+                            <label htmlFor={`criterion-points-${criterion.id}`} className="block text-sm font-medium text-gray-700">
+                              Max Points
+                            </label>
+                            <div className="mt-1">
+                              <input
+                                type="number"
+                                name={`criterion-points-${criterion.id}`}
+                                id={`criterion-points-${criterion.id}`}
+                                min="1"
+                                max="100"
+                                value={criterion.points}
+                                onChange={(e) => updateCriterionPoints(criterion.id, parseInt(e.target.value, 10) || 0)}
+                                className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {criterion.criterionType === 'subitems' && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                              Total Points
+                            </label>
+                            <div className="mt-1">
+                              <div className="py-2 px-3 bg-gray-100 rounded-md text-sm font-medium text-gray-700">
+                                {getTotalSubitemPoints(criterion)} pts (sum of subitems)
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div className="sm:col-span-3">
                           <label htmlFor={`criterion-description-${criterion.id}`} className="block text-sm font-medium text-gray-700">
                             Description
                           </label>
@@ -666,79 +921,184 @@ export default function EditRubric({ params }: { params: Promise<{ id: string }>
                         </div>
                       </div>
                       
-                      {/* Performance Levels */}
-                      <div className="mt-6">
-                        <div className="flex justify-between items-center mb-4">
-                          <h4 className="text-sm font-medium text-gray-900">Performance Levels</h4>
-                          <button
-                            type="button"
-                            onClick={() => addLevel(criterion.id)}
-                            className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                          >
-                            Add Level
-                          </button>
-                        </div>
-                        
-                        <div className="bg-gray-50 rounded-md overflow-hidden">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                  Level
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                  Description
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                  Score
-                                </th>
-                                <th scope="col" className="relative px-6 py-3">
-                                  <span className="sr-only">Actions</span>
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {criterion.levels.map((level, index) => (
-                                <tr key={level.id}>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    Level {index + 1}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-500">
-                                    <textarea
-                                      rows={2}
-                                      value={level.description}
-                                      onChange={(e) => updateLevelDescription(criterion.id, level.id, e.target.value)}
-                                      className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
-                                    />
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max={criterion.points}
-                                      value={level.score}
-                                      onChange={(e) => updateLevelScore(criterion.id, level.id, parseInt(e.target.value, 10) || 0)}
-                                      className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-24 sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
-                                    />
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <button
-                                      type="button"
-                                      onClick={() => removeLevel(criterion.id, level.id)}
-                                      disabled={criterion.levels.length <= 1}
-                                      className={`text-red-600 hover:text-red-900 ${
-                                        criterion.levels.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
-                                      }`}
-                                    >
-                                      Remove
-                                    </button>
-                                  </td>
+                      {/* Performance Levels - only show if type is 'levels' */}
+                      {criterion.criterionType === 'levels' && (
+                        <div className="mt-6">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-sm font-medium text-gray-900">Performance Levels</h4>
+                            <button
+                              type="button"
+                              onClick={() => addLevel(criterion.id)}
+                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                            >
+                              Add Level
+                            </button>
+                          </div>
+                          
+                          <div className="bg-gray-50 rounded-md overflow-hidden">
+                            <table className="min-w-full divide-y divide-gray-200">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                                    Level Name
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Description
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                    Score
+                                  </th>
+                                  <th scope="col" className="relative px-6 py-3 w-20">
+                                    <span className="sr-only">Actions</span>
+                                  </th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {criterion.levels.map((level) => (
+                                  <tr key={level.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                      <input
+                                        type="text"
+                                        value={level.name}
+                                        onChange={(e) => updateLevelName(criterion.id, level.id, e.target.value)}
+                                        className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                        placeholder="Level name"
+                                      />
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500">
+                                      <textarea
+                                        rows={2}
+                                        value={level.description}
+                                        onChange={(e) => updateLevelDescription(criterion.id, level.id, e.target.value)}
+                                        className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                      />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={criterion.points}
+                                        value={level.score}
+                                        onChange={(e) => updateLevelScore(criterion.id, level.id, parseInt(e.target.value, 10) || 0)}
+                                        className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-24 sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                      />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                      <button
+                                        type="button"
+                                        onClick={() => removeLevel(criterion.id, level.id)}
+                                        disabled={criterion.levels.length <= 1}
+                                        className={`text-red-600 hover:text-red-900 ${
+                                          criterion.levels.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Subitems - only show if type is 'subitems' */}
+                      {criterion.criterionType === 'subitems' && (
+                        <div className="mt-6">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="text-sm font-medium text-gray-900">Checklist Items</h4>
+                            <button
+                              type="button"
+                              onClick={() => addSubitem(criterion.id)}
+                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            >
+                              Add Item
+                            </button>
+                          </div>
+                          
+                          <div className="bg-gray-50 rounded-md overflow-hidden">
+                            <table className="min-w-full divide-y divide-gray-200">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                                    Item Name
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Description
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                                    Points
+                                  </th>
+                                  <th scope="col" className="relative px-6 py-3 w-20">
+                                    <span className="sr-only">Actions</span>
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {criterion.subitems.map((subitem) => (
+                                  <tr key={subitem.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                      <input
+                                        type="text"
+                                        value={subitem.name}
+                                        onChange={(e) => updateSubitemName(criterion.id, subitem.id, e.target.value)}
+                                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                        placeholder="Item name"
+                                      />
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500">
+                                      <textarea
+                                        rows={2}
+                                        value={subitem.description}
+                                        onChange={(e) => updateSubitemDescription(criterion.id, subitem.id, e.target.value)}
+                                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                        placeholder="Description of what earns these points"
+                                      />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={subitem.points}
+                                        onChange={(e) => updateSubitemPoints(criterion.id, subitem.id, parseInt(e.target.value, 10) || 0)}
+                                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-24 sm:text-sm border-gray-300 rounded-md placeholder-gray-700"
+                                      />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                      <button
+                                        type="button"
+                                        onClick={() => removeSubitem(criterion.id, subitem.id)}
+                                        disabled={criterion.subitems.length <= 1}
+                                        className={`text-red-600 hover:text-red-900 ${
+                                          criterion.subitems.length <= 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot className="bg-gray-100">
+                                <tr>
+                                  <td colSpan={2} className="px-6 py-3 text-right text-sm font-medium text-gray-700">
+                                    Total Points:
+                                  </td>
+                                  <td className="px-6 py-3 text-sm font-bold text-gray-900">
+                                    {getTotalSubitemPoints(criterion)}
+                                  </td>
+                                  <td></td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                          <p className="mt-2 text-sm text-gray-500">
+                            Reviewers will check off each item that meets the criteria. Points are summed for all checked items.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))

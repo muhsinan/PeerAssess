@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch enrolled courses
+    // Only count visible assignments for students
     const coursesQuery = `
       SELECT 
         c.course_id as id,
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
           SELECT COUNT(*) 
           FROM peer_assessment.assignments a 
           WHERE a.course_id = c.course_id
+            AND (a.is_hidden = false OR a.is_hidden IS NULL)
         ) as assignmentCount
       FROM 
         peer_assessment.courses c
@@ -50,6 +52,7 @@ export async function GET(request: NextRequest) {
     const courses = coursesResult.rows;
 
     // Fetch upcoming assignments with submission status
+    // Filter out hidden assignments for students
     const assignmentsQuery = `
       WITH student_submissions AS (
         SELECT 
@@ -87,6 +90,7 @@ export async function GET(request: NextRequest) {
         student_submissions ss ON a.assignment_id = ss.assignment_id
       WHERE 
         ce.student_id = $1
+        AND (a.is_hidden = false OR a.is_hidden IS NULL)
       ORDER BY 
         a.due_date ASC
       LIMIT 10
@@ -95,6 +99,7 @@ export async function GET(request: NextRequest) {
     const assignments = assignmentsResult.rows;
 
     // Fetch recent submissions
+    // Only show released AI reviews to students, but show count of unreleased ones as "assessing"
     const submissionsQuery = `
       SELECT 
         s.submission_id as id,
@@ -112,12 +117,28 @@ export async function GET(request: NextRequest) {
           SELECT COUNT(*) 
           FROM peer_assessment.peer_reviews pr 
           WHERE pr.submission_id = s.submission_id
+            AND (
+              (pr.is_ai_generated = true AND pr.is_released = true)
+              OR (pr.is_ai_generated IS NULL OR pr.is_ai_generated = false)
+            )
         ) as "reviewCount",
         (
           SELECT COUNT(*) 
           FROM peer_assessment.peer_reviews pr 
-          WHERE pr.submission_id = s.submission_id AND pr.status = 'completed'
+          WHERE pr.submission_id = s.submission_id 
+            AND pr.status = 'completed'
+            AND (
+              (pr.is_ai_generated = true AND pr.is_released = true)
+              OR (pr.is_ai_generated IS NULL OR pr.is_ai_generated = false)
+            )
         ) as "completedReviewCount",
+        (
+          SELECT COUNT(*) 
+          FROM peer_assessment.peer_reviews pr 
+          WHERE pr.submission_id = s.submission_id 
+            AND pr.is_ai_generated = true
+            AND pr.is_released = false
+        ) as "unreleasedAIReviewCount",
         (
           SELECT json_agg(json_build_object(
             'id', pr.review_id,
@@ -133,6 +154,10 @@ export async function GET(request: NextRequest) {
           FROM peer_assessment.peer_reviews pr
           JOIN peer_assessment.users u ON pr.reviewer_id = u.user_id
           WHERE pr.submission_id = s.submission_id
+            AND (
+              (pr.is_ai_generated = true AND pr.is_released = true)
+              OR (pr.is_ai_generated IS NULL OR pr.is_ai_generated = false)
+            )
         ) as "reviews"
       FROM 
         peer_assessment.submissions s
@@ -151,6 +176,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch assigned peer reviews (reviews student needs to complete)
     // Include check for whether the reviewer has submitted their own assignment
+    // EXCLUDE AI-generated reviews (students don't write those)
     const assignedReviewsQuery = `
       SELECT 
         pr.review_id as id,
@@ -188,6 +214,7 @@ export async function GET(request: NextRequest) {
         )
       WHERE 
         pr.reviewer_id = $1
+        AND (pr.is_ai_generated IS NULL OR pr.is_ai_generated = false)
       ORDER BY 
         pr.assigned_date ASC
     `;
@@ -196,6 +223,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch recent feedback (reviews others have completed on student's submissions)
     // Group by submission and include stored aggregated synthesis
+    // ONLY show released reviews (for AI auto-reviews) or non-AI reviews
     const receivedFeedbackQuery = `
       SELECT 
         s.submission_id as submissionId,
@@ -229,7 +257,12 @@ export async function GET(request: NextRequest) {
       JOIN 
         peer_assessment.courses c ON a.course_id = c.course_id
       WHERE 
-        s.student_id = $1 AND pr.status = 'completed'
+        s.student_id = $1 
+        AND pr.status = 'completed'
+        AND (
+          (pr.is_ai_generated = true AND pr.is_released = true)
+          OR (pr.is_ai_generated IS NULL OR pr.is_ai_generated = false)
+        )
       GROUP BY 
         s.submission_id, s.title, s.aggregated_feedback_synthesis, s.aggregated_synthesis_generated_at, a.title, c.name, c.course_id
       ORDER BY 
@@ -284,6 +317,7 @@ export async function GET(request: NextRequest) {
         courseName: submission.courseName,
         reviewCount: parseInt(submission.reviewCount),
         completedReviewCount: parseInt(submission.completedReviewCount),
+        unreleasedAIReviewCount: parseInt(submission.unreleasedaireviewcount || submission.unreleasedAIReviewCount || '0'),
         reviews: submission.reviews || []
       })),
       assignedReviews: assignedReviews.map(review => ({

@@ -39,7 +39,7 @@ export async function GET(
       );
     }
 
-    // Fetch conversation details
+    // Fetch conversation details including criterion and subitem info
     const conversationResult = await pool.query(`
       SELECT 
         cc.conversation_id as id,
@@ -48,6 +48,12 @@ export async function GET(
         cc.updated_at as "updatedAt",
         cc.last_message_at as "lastMessageAt",
         cc.is_ai_conversation as "isAiConversation",
+        cc.criterion_id as "criterionId",
+        cc.subitem_id as "subitemId",
+        
+        -- Criterion and subitem names
+        rc.name as "criterionName",
+        rs.name as "subitemName",
         
         -- Participants info (anonymized)
         u1.user_id as "participant1Id",
@@ -71,6 +77,8 @@ export async function GET(
       JOIN peer_assessment.submissions s ON pr.submission_id = s.submission_id
       JOIN peer_assessment.assignments a ON s.assignment_id = a.assignment_id
       JOIN peer_assessment.courses c ON a.course_id = c.course_id
+      LEFT JOIN peer_assessment.rubric_criteria rc ON cc.criterion_id = rc.criterion_id
+      LEFT JOIN peer_assessment.rubric_subitems rs ON cc.subitem_id = rs.subitem_id
       
       WHERE cc.conversation_id = $1
     `, [conversationId]);

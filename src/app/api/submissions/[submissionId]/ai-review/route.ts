@@ -75,13 +75,14 @@ export async function POST(
       );
     }
 
-    // Get rubric criteria for this assignment
+    // Get rubric criteria for this assignment (including criterion type)
     const criteriaResult = await pool.query(`
       SELECT 
         rc.criterion_id,
         rc.name,
         rc.description,
-        rc.max_points
+        rc.max_points,
+        COALESCE(rc.criterion_type, 'levels') as criterion_type
       FROM peer_assessment.rubric_criteria rc
       JOIN peer_assessment.assignment_rubrics ar ON rc.rubric_id = ar.rubric_id
       WHERE ar.assignment_id = $1
@@ -95,7 +96,33 @@ export async function POST(
       );
     }
 
-    const criteria = criteriaResult.rows;
+    // Get subitems for criteria that use subitems
+    const criteriaWithSubitems = await Promise.all(criteriaResult.rows.map(async (criterion: any) => {
+      if (criterion.criterion_type === 'subitems') {
+        const subitemsResult = await pool.query(`
+          SELECT 
+            subitem_id,
+            name,
+            description,
+            points,
+            order_position
+          FROM peer_assessment.rubric_subitems
+          WHERE criterion_id = $1
+          ORDER BY order_position
+        `, [criterion.criterion_id]);
+        
+        return {
+          ...criterion,
+          subitems: subitemsResult.rows
+        };
+      }
+      return {
+        ...criterion,
+        subitems: []
+      };
+    }));
+
+    const criteria = criteriaWithSubitems;
 
     // Initialize OpenAI client
     const openai = new OpenAI({
@@ -109,6 +136,56 @@ export async function POST(
       );
     }
 
+    // Build criteria description including subitems
+    const buildCriteriaDescription = () => {
+      return criteria.map((c: any) => {
+        if (c.criterion_type === 'subitems' && c.subitems.length > 0) {
+          const subitemsList = c.subitems.map((s: any) => `    * ${s.name} (${s.points} pts): ${s.description || 'No description'}`).join('\n');
+          return `- ${c.name} (${c.max_points} points total) [CHECKLIST - evaluate each item]:
+${subitemsList}`;
+        }
+        return `- ${c.name} (${c.max_points} points) [LEVEL-BASED]: ${c.description}`;
+      }).join('\n');
+    };
+
+    // Build JSON structure example for the prompt
+    const buildJsonExample = () => {
+      const criteriaExamples = criteria.map((c: any) => {
+        if (c.criterion_type === 'subitems' && c.subitems.length > 0) {
+          return `    {
+      "criterionId": ${c.criterion_id},
+      "criterionType": "subitems",
+      "score": calculated_sum_of_checked_subitems,
+      "feedback": "Overall feedback for this category...",
+      "subitemScores": [
+${c.subitems.map((s: any) => `        {
+          "subitemId": ${s.subitem_id},
+          "subitemName": "${s.name}",
+          "checked": true_or_false,
+          "points": ${s.points},
+          "feedback": "Specific feedback for this item..."
+        }`).join(',\n')}
+      ]
+    }`;
+        }
+        return `    {
+      "criterionId": ${c.criterion_id},
+      "criterionType": "levels",
+      "score": score_out_of_${c.max_points},
+      "feedback": "Feedback for this criterion..."
+    }`;
+      }).join(',\n');
+
+      return `{
+  "overallFeedback": "Your overall feedback here...",
+  "criteriaScores": [
+${criteriaExamples}
+  ],
+  "totalScore": calculated_total,
+  "suggestionsForImprovement": ["suggestion1", "suggestion2", "suggestion3"]
+}`;
+    };
+
     // Generate AI review using custom instructor prompt if available
     const defaultPrompt = `You are a college student peer reviewer helping a fellow student improve their work. Write a peer review that sounds like it comes from another student, not a teacher or AI. Be helpful, friendly, and constructive while following the rubric.
 
@@ -119,23 +196,19 @@ Student Submission Title: ${submission.title}
 Student Submission Content: ${submission.content}
 
 Rubric Criteria:
-${criteria.map(c => `- ${c.name} (${c.max_points} points): ${c.description}`).join('\n')}
+${buildCriteriaDescription()}
+
+IMPORTANT INSTRUCTIONS:
+- For LEVEL-BASED criteria: Give a single score based on overall quality
+- For CHECKLIST criteria: Evaluate EACH subitem individually:
+  * Set "checked" to true if the requirement is met, false if not
+  * Provide specific feedback for each subitem
+  * The score should be the sum of points for all checked items
 
 Write your review as if you're talking to a classmate. Use casual but respectful language. Share what you found interesting, what worked well, and what could be improved. Be encouraging but honest about areas that need work.
 
-Format your response as JSON with this structure:
-{
-  "overallFeedback": "Your overall feedback here (write as a peer, use 'I think', 'I noticed', 'you did well', etc.)...",
-  "criteriaScores": [
-    {
-      "criterionId": ${criteria[0]?.criterion_id},
-      "score": score_out_of_max_points,
-      "feedback": "Peer feedback for this criterion (sound like a fellow student)..."
-    }
-  ],
-  "totalScore": calculated_total,
-  "suggestionsForImprovement": ["suggestion1", "suggestion2", "suggestion3"]
-}
+Format your response as JSON with this EXACT structure:
+${buildJsonExample()}
 
 Guidelines for peer-style feedback:
 - Use first person ("I think", "I found", "I noticed")
@@ -162,27 +235,20 @@ Student Submission Title: ${submission.title}
 Student Submission Content: ${submission.content}
 
 Rubric Criteria:
-${criteria.map(c => `- ${c.name} (${c.max_points} points): ${c.description}`).join('\n')}
+${buildCriteriaDescription()}
+
+IMPORTANT INSTRUCTIONS:
+- For LEVEL-BASED criteria: Give a single score based on overall quality
+- For CHECKLIST criteria: Evaluate EACH subitem individually with "checked": true/false and specific feedback
 
 IMPORTANT: Always format your response as JSON with this exact structure:
-{
-  "overallFeedback": "Your feedback here...",
-  "criteriaScores": [
-    {
-      "criterionId": ${criteria[0]?.criterion_id},
-      "score": score_out_of_max_points,
-      "feedback": "Feedback for this criterion..."
-    }
-  ],
-  "totalScore": calculated_total,
-  "suggestionsForImprovement": ["suggestion1", "suggestion2", "suggestion3"]
-}`;
+${buildJsonExample()}`;
     } else {
       prompt = defaultPrompt;
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -208,9 +274,27 @@ IMPORTANT: Always format your response as JSON with this exact structure:
 
     let parsedReview;
     try {
-      parsedReview = JSON.parse(aiResponse);
+      // Clean the AI response - remove markdown code blocks if present
+      let cleanedResponse = aiResponse.trim();
+      
+      // Remove ```json or ``` from the start
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.slice(7);
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.slice(3);
+      }
+      
+      // Remove ``` from the end
+      if (cleanedResponse.endsWith('```')) {
+        cleanedResponse = cleanedResponse.slice(0, -3);
+      }
+      
+      cleanedResponse = cleanedResponse.trim();
+      
+      parsedReview = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('Error parsing AI response:', parseError);
+      console.error('Raw AI response:', aiResponse);
       return NextResponse.json(
         { error: 'Failed to parse AI review response' },
         { status: 500 }
@@ -225,6 +309,70 @@ IMPORTANT: Always format your response as JSON with this exact structure:
       );
     }
 
+    // Merge actual subitem points from rubric into AI response
+    // This ensures we use the correct points from the database, not AI-generated ones
+    const enrichedCriteriaScores = parsedReview.criteriaScores.map((cs: any) => {
+      const criterion = criteria.find((c: any) => c.criterion_id === cs.criterionId);
+      
+      if (criterion && criterion.criterion_type === 'subitems' && criterion.subitems) {
+        // For subitem-based criteria, merge actual points from rubric
+        const enrichedSubitemScores = (cs.subitemScores || []).map((ss: any) => {
+          // Try to find the matching subitem from the rubric
+          const actualSubitem = criterion.subitems.find((s: any) => 
+            s.subitem_id === ss.subitemId || 
+            s.name.toLowerCase() === (ss.subitemName || '').toLowerCase()
+          );
+          
+          return {
+            subitemId: actualSubitem?.subitem_id || ss.subitemId,
+            subitemName: actualSubitem?.name || ss.subitemName,
+            checked: ss.checked || false,
+            points: actualSubitem?.points || ss.points || 0,
+            feedback: ss.feedback || ''
+          };
+        });
+
+        // If AI didn't return subitem scores, create them from the rubric
+        if (!cs.subitemScores || cs.subitemScores.length === 0) {
+          const defaultSubitemScores = criterion.subitems.map((s: any) => ({
+            subitemId: s.subitem_id,
+            subitemName: s.name,
+            checked: false,
+            points: s.points,
+            feedback: ''
+          }));
+          
+          return {
+            ...cs,
+            criterionType: 'subitems',
+            subitemScores: defaultSubitemScores,
+            score: 0 // Will be calculated from checked items
+          };
+        }
+
+        // Recalculate score from checked items with correct points
+        const calculatedScore = enrichedSubitemScores
+          .filter((ss: any) => ss.checked)
+          .reduce((sum: number, ss: any) => sum + ss.points, 0);
+
+        return {
+          ...cs,
+          criterionType: 'subitems',
+          subitemScores: enrichedSubitemScores,
+          score: calculatedScore
+        };
+      }
+      
+      // For level-based criteria, just pass through
+      return {
+        ...cs,
+        criterionType: 'levels'
+      };
+    });
+
+    // Recalculate total score
+    const calculatedTotalScore = enrichedCriteriaScores.reduce((sum: number, cs: any) => sum + (cs.score || 0), 0);
+
     // Return the generated review for preview (don't save yet)
     return NextResponse.json({
       success: true,
@@ -234,12 +382,12 @@ IMPORTANT: Always format your response as JSON with this exact structure:
         assignmentTitle: submission.assignment_title,
         submissionTitle: submission.title,
         overallFeedback: parsedReview.overallFeedback,
-        criteriaScores: parsedReview.criteriaScores,
-        totalScore: parsedReview.totalScore,
+        criteriaScores: enrichedCriteriaScores,
+        totalScore: calculatedTotalScore,
         suggestionsForImprovement: parsedReview.suggestionsForImprovement || [],
         criteria: criteria,
         generatedBy: instructorId,
-        aiModel: 'gpt-3.5-turbo'
+        aiModel: 'gpt-4o-mini'
       }
     });
 
@@ -265,7 +413,7 @@ export async function PUT(
       overallFeedback, 
       criteriaScores, 
       totalScore,
-      aiModel = 'gpt-3.5-turbo'
+      aiModel = 'gpt-4o-mini'
     } = body;
     
     if (!submissionId || isNaN(Number(submissionId))) {
@@ -319,8 +467,19 @@ export async function PUT(
 
       const reviewId = reviewResult.rows[0].review_id;
 
-      // Save individual criterion scores
+      // Save individual criterion scores (including subitem details in feedback as JSON if present)
       for (const criterionScore of criteriaScores) {
+        // If this criterion has subitem scores, include them in the feedback
+        let feedbackToSave = criterionScore.feedback || '';
+        if (criterionScore.subitemScores && Array.isArray(criterionScore.subitemScores)) {
+          // Store subitem evaluations as JSON at the end of feedback
+          const subitemData = {
+            type: 'subitems',
+            evaluations: criterionScore.subitemScores
+          };
+          feedbackToSave = `${feedbackToSave}\n\n<!--SUBITEM_DATA:${JSON.stringify(subitemData)}-->`;
+        }
+        
         await client.query(`
           INSERT INTO peer_assessment.peer_review_scores (
             review_id,
@@ -328,7 +487,7 @@ export async function PUT(
             score,
             feedback
           ) VALUES ($1, $2, $3, $4)
-        `, [reviewId, criterionScore.criterionId, criterionScore.score, criterionScore.feedback]);
+        `, [reviewId, criterionScore.criterionId, criterionScore.score, feedbackToSave]);
       }
 
       // Update submission status to reviewed

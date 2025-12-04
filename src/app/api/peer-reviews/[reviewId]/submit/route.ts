@@ -37,7 +37,7 @@ Please provide a comprehensive synthesis that:
 Format your response as a clear, well-structured summary that helps the student understand the collective feedback from their peers.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",

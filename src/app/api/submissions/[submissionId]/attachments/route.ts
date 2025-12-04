@@ -7,6 +7,11 @@ import { mkdir } from 'fs/promises';
 // Maximum file size (10MB)
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+// Configure route segment for file operations
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Maximum execution time of 60 seconds
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ submissionId: string }> }
@@ -14,7 +19,10 @@ export async function POST(
   try {
     const { submissionId } = await params;
     
+    console.log('[File Upload] Starting upload for submission:', submissionId);
+    
     if (!submissionId || isNaN(Number(submissionId))) {
+      console.error('[File Upload] Invalid submission ID:', submissionId);
       return NextResponse.json(
         { error: 'Invalid submission ID' },
         { status: 400 }
@@ -22,11 +30,30 @@ export async function POST(
     }
 
     // Check if the form data is valid
-    const formData = await request.formData();
+    let formData;
+    try {
+      formData = await request.formData();
+      console.log('[File Upload] FormData parsed successfully');
+    } catch (formError) {
+      console.error('[File Upload] Error parsing FormData:', formError);
+      return NextResponse.json(
+        { error: 'Failed to parse form data', details: String(formError) },
+        { status: 400 }
+      );
+    }
+    
     const file = formData.get('file') as File;
     const studentId = formData.get('studentId') as string;
     
+    console.log('[File Upload] File info:', {
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type,
+      studentId
+    });
+    
     if (!file) {
+      console.error('[File Upload] No file provided in form data');
       return NextResponse.json(
         { error: 'No file provided' },
         { status: 400 }
@@ -34,6 +61,7 @@ export async function POST(
     }
     
     if (!studentId) {
+      console.error('[File Upload] No student ID provided');
       return NextResponse.json(
         { error: 'Student ID is required' },
         { status: 400 }
@@ -41,24 +69,35 @@ export async function POST(
     }
 
     // Check if submission exists and belongs to the student
-    const submissionCheck = await pool.query(
-      `SELECT submission_id 
-       FROM peer_assessment.submissions 
-       WHERE submission_id = $1 AND student_id = $2`,
-      [submissionId, studentId]
-    );
-    
-    if (submissionCheck.rows.length === 0) {
+    try {
+      const submissionCheck = await pool.query(
+        `SELECT submission_id 
+         FROM peer_assessment.submissions 
+         WHERE submission_id = $1 AND student_id = $2`,
+        [submissionId, studentId]
+      );
+      
+      if (submissionCheck.rows.length === 0) {
+        console.error('[File Upload] Submission not found or not owned by student');
+        return NextResponse.json(
+          { error: 'Submission not found or not owned by this student' },
+          { status: 404 }
+        );
+      }
+      console.log('[File Upload] Submission ownership verified');
+    } catch (dbError) {
+      console.error('[File Upload] Database error checking submission:', dbError);
       return NextResponse.json(
-        { error: 'Submission not found or not owned by this student' },
-        { status: 404 }
+        { error: 'Database error verifying submission', details: String(dbError) },
+        { status: 500 }
       );
     }
 
     // Check file size
     if (file.size > MAX_FILE_SIZE) {
+      console.error('[File Upload] File size exceeds limit:', file.size);
       return NextResponse.json(
-        { error: 'File size exceeds the limit of 10MB' },
+        { error: `File size exceeds the limit of ${MAX_FILE_SIZE / 1024 / 1024}MB` },
         { status: 400 }
       );
     }
@@ -68,62 +107,98 @@ export async function POST(
     const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.txt', '.jpg', '.jpeg', '.png'];
     
     if (!allowedExtensions.includes(fileExtension)) {
+      console.error('[File Upload] File type not allowed:', fileExtension);
       return NextResponse.json(
-        { error: 'File type not allowed' },
+        { error: `File type ${fileExtension} not allowed` },
         { status: 400 }
       );
     }
 
     // Create a unique filename
     const timestamp = Date.now();
-    const uniqueFilename = `${timestamp}_${file.name.replace(/\s+/g, '_')}`;
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uniqueFilename = `${timestamp}_${sanitizedFileName}`;
+    
+    console.log('[File Upload] Generated unique filename:', uniqueFilename);
     
     // Create directory if it doesn't exist
     const uploadDir = path.join(process.cwd(), 'uploads', 'submissions', submissionId);
-    await mkdir(uploadDir, { recursive: true });
+    console.log('[File Upload] Creating upload directory:', uploadDir);
+    
+    try {
+      await mkdir(uploadDir, { recursive: true });
+      console.log('[File Upload] Upload directory created/verified');
+    } catch (mkdirError) {
+      console.error('[File Upload] Error creating upload directory:', mkdirError);
+      return NextResponse.json(
+        { error: 'Failed to create upload directory', details: String(mkdirError) },
+        { status: 500 }
+      );
+    }
     
     // Save file to disk
     const filePath = path.join(uploadDir, uniqueFilename);
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(filePath, fileBuffer);
+    console.log('[File Upload] Saving file to:', filePath);
+    
+    try {
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+      await writeFile(filePath, fileBuffer);
+      console.log('[File Upload] File saved successfully');
+    } catch (writeError) {
+      console.error('[File Upload] Error writing file:', writeError);
+      return NextResponse.json(
+        { error: 'Failed to save file to disk', details: String(writeError) },
+        { status: 500 }
+      );
+    }
     
     // Get the relative file path for database storage
     const relativeFilePath = path.join('uploads', 'submissions', submissionId, uniqueFilename);
     
     // Save file info to database
-    const insertResult = await pool.query(`
-      INSERT INTO peer_assessment.submission_attachments(
-        submission_id, 
-        file_name, 
-        file_path, 
-        file_size, 
-        file_type, 
-        upload_date
-      )
-      VALUES ($1, $2, $3, $4, $5, NOW())
-      RETURNING 
-        attachment_id as id,
-        file_name as "fileName",
-        file_path as "filePath",
-        file_size as "fileSize",
-        file_type as "fileType",
-        upload_date as "uploadDate"
-    `, [
-      submissionId,
-      file.name,
-      relativeFilePath,
-      file.size,
-      file.type
-    ]);
-    
-    return NextResponse.json({
-      message: 'File uploaded successfully',
-      attachment: insertResult.rows[0]
-    });
+    try {
+      const insertResult = await pool.query(`
+        INSERT INTO peer_assessment.submission_attachments(
+          submission_id, 
+          file_name, 
+          file_path, 
+          file_size, 
+          file_type, 
+          upload_date
+        )
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING 
+          attachment_id as id,
+          file_name as "fileName",
+          file_path as "filePath",
+          file_size as "fileSize",
+          file_type as "fileType",
+          upload_date as "uploadDate"
+      `, [
+        submissionId,
+        file.name,
+        relativeFilePath,
+        file.size,
+        file.type
+      ]);
+      
+      console.log('[File Upload] Database record created:', insertResult.rows[0].id);
+      
+      return NextResponse.json({
+        message: 'File uploaded successfully',
+        attachment: insertResult.rows[0]
+      });
+    } catch (dbInsertError) {
+      console.error('[File Upload] Database error saving attachment record:', dbInsertError);
+      return NextResponse.json(
+        { error: 'Failed to save attachment record to database', details: String(dbInsertError) },
+        { status: 500 }
+      );
+    }
   } catch (error) {
-    console.error('Error uploading file:', error);
+    console.error('[File Upload] Unexpected error:', error);
     return NextResponse.json(
-      { error: 'Failed to upload file', details: String(error) },
+      { error: 'Failed to upload file', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

@@ -7,7 +7,6 @@ import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
 import TermsModal from '../../components/TermsModal';
 import PrivacyModal from '../../components/PrivacyModal';
-import { sendEmailVerificationEmail } from '../../lib/emailjs';
 
 interface InvitationData {
   courseId: number;
@@ -50,8 +49,6 @@ function RegisterForm() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
   const [coursesError, setCoursesError] = useState<string | null>(null);
-  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
-  const [verificationEmail, setVerificationEmail] = useState<string>('');
 
   // Verify invitation token on component mount
   useEffect(() => {
@@ -194,32 +191,20 @@ function RegisterForm() {
         throw new Error(data.error || 'Registration failed');
       }
       
-      // Check if email verification is required
-      if (data.requiresVerification && data.verificationToken) {
-        try {
-          // Send verification email using EmailJS from the frontend
-          console.log('🔄 Attempting to send verification email to:', data.email);
-          console.log('🔑 Using verification token:', data.verificationToken);
-          
-          const emailResult = await sendEmailVerificationEmail(data.email, formData.name, data.verificationToken);
-          console.log('📧 Email send result:', emailResult);
-          
-          if (emailResult) {
-            console.log('✅ Verification email sent successfully via EmailJS');
-            
-            // Show in-page success message
-            setVerificationEmailSent(true);
-            setVerificationEmail(data.email);
-            
-            // Scroll to top to show the message
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          } else {
-            throw new Error('EmailJS returned false - check console for details');
-          }
-        } catch (emailError) {
-          console.error('❌ Failed to send verification email:', emailError);
-          throw new Error('Failed to send verification email. Please try again.');
+      // Registration completed immediately - no email verification required
+      if (!data.requiresVerification) {
+        console.log('✅ Registration completed successfully');
+        
+        // Store user data in localStorage if provided
+        if (data.user) {
+          localStorage.setItem('userId', data.user.id.toString());
+          localStorage.setItem('userName', data.user.name);
+          localStorage.setItem('userEmail', data.user.email);
+          localStorage.setItem('userRole', data.user.role);
         }
+        
+        // Redirect to dashboard
+        router.push('/dashboard');
       } else {
         // This shouldn't happen with the new flow, but handle just in case
         throw new Error('Unexpected registration response');
@@ -334,42 +319,7 @@ function RegisterForm() {
             </div>
           )}
 
-          {verificationEmailSent && (
-            <div className="rounded-md bg-green-50 p-4 mb-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.236 4.53L8.53 10.53a.75.75 0 00-1.06 1.061l2.03 2.03a.75.75 0 001.137-.089l3.857-5.401z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-green-800">Verification Email Sent!</h3>
-                  <div className="mt-2 text-sm text-green-700">
-                    <p>
-                      📧 We've sent a verification email to <strong>{verificationEmail}</strong>.
-                    </p>
-                    <p className="mt-1">
-                      🔗 Please check your email and click the verification link to complete your registration.
-                    </p>
-                    <p className="mt-1">
-                      ⏰ The verification link will expire in 24 hours.
-                    </p>
-                  </div>
-                  <div className="mt-3">
-                    <Link 
-                      href="/login?message=verification-sent" 
-                      className="text-sm font-medium text-green-800 hover:text-green-600 underline"
-                    >
-                      Go to login page →
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {!verificationEmailSent && (
-            <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div className="mb-4">
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -558,7 +508,6 @@ function RegisterForm() {
               </button>
             </div>
           </form>
-          )}
         </div>
       </div>
       

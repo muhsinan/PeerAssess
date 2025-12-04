@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { createInvitationToken } from '@/lib/invitation-tokens';
-import { sendCourseInvitationEmail } from '@/lib/email';
 
 // GET all enrollments for a course
 export async function GET(
@@ -125,34 +124,23 @@ export async function POST(
           invitationToken = await createInvitationToken(parseInt(courseId), email, course.instructor_id);
         }
         
-        // Send invitation email
-        const emailSent = await sendCourseInvitationEmail(
-          email, 
-          course.name, 
-          course.instructor_name, 
-          invitationToken
-        );
-        
-        if (!emailSent) {
-          return NextResponse.json(
-            { error: 'Failed to send invitation email' },
-            { status: 500 }
-          );
-        }
-        
+        // Return invitation token for frontend to send email (like normal registration)
         return NextResponse.json({
-          message: 'Invitation sent successfully',
+          message: 'Invitation token created - frontend will send email',
           userExists: false,
           invitationSent: true,
           email: email,
           courseName: course.name,
+          instructorName: course.instructor_name,
+          invitationToken: invitationToken,
           // Include email data for EmailJS frontend sending
           emailData: {
             to: email,
             subject: `Invitation to join ${course.name} on Peercept`,
             instructor_name: course.instructor_name,
             course_name: course.name,
-            invitation_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?invitation=${invitationToken}`
+            invitation_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?invitation=${invitationToken}`,
+            verification_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/register?invitation=${invitationToken}`
           }
         });
       } catch (error) {

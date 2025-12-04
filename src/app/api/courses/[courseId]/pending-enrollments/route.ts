@@ -64,7 +64,7 @@ export async function GET(
   }
 }
 
-// POST to approve or reject an enrollment request
+// POST to approve or reject enrollment request(s)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
@@ -80,18 +80,29 @@ export async function POST(
     }
     
     // Get request body
-    const { requestId, action, rejectionReason, instructorId } = await request.json();
+    const { requestId, requestIds, action, rejectionReason, instructorId } = await request.json();
     
-    if (!requestId || !action || !instructorId) {
+    if (!action || !instructorId) {
       return NextResponse.json(
-        { error: 'Request ID, action, and instructor ID are required' },
+        { error: 'Action and instructor ID are required' },
         { status: 400 }
       );
     }
     
-    if (!['approve', 'reject'].includes(action)) {
+    if (!['approve', 'reject', 'approve_all'].includes(action)) {
       return NextResponse.json(
-        { error: 'Action must be either "approve" or "reject"' },
+        { error: 'Action must be either "approve", "reject", or "approve_all"' },
+        { status: 400 }
+      );
+    }
+    
+    // Support both single and bulk operations
+    const isBulk = Array.isArray(requestIds);
+    
+    // Validate requestId/requestIds for actions that need them
+    if (action !== 'approve_all' && !isBulk && !requestId) {
+      return NextResponse.json(
+        { error: 'Request ID or Request IDs are required' },
         { status: 400 }
       );
     }
@@ -103,7 +114,174 @@ export async function POST(
       );
     }
     
-    // Begin transaction
+    // Handle approve_all action - approve all pending requests for the course
+    if (action === 'approve_all') {
+      await pool.query('BEGIN');
+      
+      try {
+        // Get all pending requests for this course
+        const pendingRequestsResult = await pool.query(
+          'SELECT * FROM peer_assessment.pending_enrollment_requests WHERE course_id = $1 AND status = $2',
+          [courseId, 'pending']
+        );
+        
+        if (pendingRequestsResult.rows.length === 0) {
+          await pool.query('ROLLBACK');
+          return NextResponse.json({
+            message: 'No pending requests to approve',
+            approved: [],
+            skipped: []
+          });
+        }
+        
+        const approved = [];
+        const skipped = [];
+        
+        // Process each pending request
+        for (const pendingRequest of pendingRequestsResult.rows) {
+          try {
+            // Check if student is already enrolled (in case of race condition)
+            const enrollmentCheck = await pool.query(
+              'SELECT enrollment_id FROM peer_assessment.course_enrollments WHERE course_id = $1 AND student_id = $2',
+              [courseId, pendingRequest.student_id]
+            );
+            
+            if (enrollmentCheck.rows.length > 0) {
+              skipped.push({
+                id: pendingRequest.request_id,
+                studentName: pendingRequest.student_name,
+                reason: 'Already enrolled'
+              });
+              continue;
+            }
+            
+            // Enroll the student
+            await pool.query(
+              'INSERT INTO peer_assessment.course_enrollments (course_id, student_id) VALUES ($1, $2)',
+              [courseId, pendingRequest.student_id]
+            );
+            
+            // Update the request status to approved
+            await pool.query(
+              'UPDATE peer_assessment.pending_enrollment_requests SET status = $1, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = $2 WHERE request_id = $3',
+              ['approved', instructorId, pendingRequest.request_id]
+            );
+            
+            approved.push({
+              id: pendingRequest.request_id,
+              studentName: pendingRequest.student_name,
+              studentEmail: pendingRequest.student_email
+            });
+          } catch (error) {
+            console.error(`Error approving request ${pendingRequest.request_id}:`, error);
+            skipped.push({
+              id: pendingRequest.request_id,
+              studentName: pendingRequest.student_name,
+              reason: 'Processing error'
+            });
+          }
+        }
+        
+        await pool.query('COMMIT');
+        
+        return NextResponse.json({
+          message: `Successfully approved ${approved.length} enrollment request(s)`,
+          action: 'approve_all',
+          approved,
+          skipped,
+          total: pendingRequestsResult.rows.length
+        });
+        
+      } catch (transactionError) {
+        await pool.query('ROLLBACK');
+        throw transactionError;
+      }
+    }
+    
+    // Handle bulk operations (approve/reject multiple specific requests)
+    if (isBulk && requestIds.length > 0) {
+      await pool.query('BEGIN');
+      
+      try {
+        const results = [];
+        const errors = [];
+        
+        for (const reqId of requestIds) {
+          try {
+            // Get the pending request details
+            const requestResult = await pool.query(
+              'SELECT * FROM peer_assessment.pending_enrollment_requests WHERE request_id = $1 AND course_id = $2 AND status = $3',
+              [reqId, courseId, 'pending']
+            );
+            
+            if (requestResult.rows.length === 0) {
+              errors.push({
+                requestId: reqId,
+                error: 'Request not found or already processed'
+              });
+              continue;
+            }
+            
+            const pendingRequest = requestResult.rows[0];
+            
+            if (action === 'approve') {
+              // Check if student is already enrolled
+              const enrollmentCheck = await pool.query(
+                'SELECT enrollment_id FROM peer_assessment.course_enrollments WHERE course_id = $1 AND student_id = $2',
+                [courseId, pendingRequest.student_id]
+              );
+              
+              if (enrollmentCheck.rows.length > 0) {
+                errors.push({
+                  requestId: reqId,
+                  error: 'Student is already enrolled'
+                });
+                continue;
+              }
+              
+              // Enroll the student
+              await pool.query(
+                'INSERT INTO peer_assessment.course_enrollments (course_id, student_id) VALUES ($1, $2)',
+                [courseId, pendingRequest.student_id]
+              );
+              
+              // Update the request status to approved
+              await pool.query(
+                'UPDATE peer_assessment.pending_enrollment_requests SET status = $1, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = $2 WHERE request_id = $3',
+                ['approved', instructorId, reqId]
+              );
+              
+              results.push({
+                requestId: reqId,
+                studentName: pendingRequest.student_name,
+                studentEmail: pendingRequest.student_email,
+                action: 'approved'
+              });
+            }
+          } catch (error) {
+            console.error(`Error processing request ${reqId}:`, error);
+            errors.push({
+              requestId: reqId,
+              error: 'Processing error'
+            });
+          }
+        }
+        
+        await pool.query('COMMIT');
+        
+        return NextResponse.json({
+          message: `Processed ${results.length} request(s) successfully`,
+          results,
+          errors
+        });
+        
+      } catch (transactionError) {
+        await pool.query('ROLLBACK');
+        throw transactionError;
+      }
+    }
+    
+    // Handle single request (original functionality)
     await pool.query('BEGIN');
     
     try {

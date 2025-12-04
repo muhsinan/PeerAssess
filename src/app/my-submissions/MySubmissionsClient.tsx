@@ -217,11 +217,8 @@ export default function MySubmissionsClient() {
                             href={`/submissions/${submission.id}`} 
                             className="text-md font-medium text-purple-600 hover:text-purple-900 truncate"
                           >
-                            {submission.title || 'Untitled Submission'}
+                            {submission.assignmentTitle}
                           </Link>
-                          <p className="mt-1 text-sm text-gray-500 truncate">
-                            Assignment: {submission.assignmentTitle}
-                          </p>
                           <p className="mt-1 text-sm text-gray-500">
                             Course: {submission.courseName}
                           </p>

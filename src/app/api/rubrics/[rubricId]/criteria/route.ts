@@ -37,6 +37,7 @@ export async function GET(
         rc.description,
         rc.max_points AS "maxPoints",
         rc.weight,
+        COALESCE(rc.criterion_type, 'levels') AS "criterionType",
         rc.created_at AS "createdAt",
         rc.updated_at AS "updatedAt"
       FROM 
@@ -47,11 +48,13 @@ export async function GET(
         rc.criterion_id ASC
     `, [rubricId]);
 
-    // Get performance levels for each criterion
+    // Get performance levels and subitems for each criterion
     const criteria = await Promise.all(criteriaResult.rows.map(async (criterion) => {
+      // Get performance levels
       const levelsResult = await pool.query(`
         SELECT 
           level_id as id,
+          name,
           description,
           points as score,
           order_position as "orderPosition"
@@ -63,10 +66,27 @@ export async function GET(
           order_position ASC
       `, [criterion.id]);
 
+      // Get subitems
+      const subitemsResult = await pool.query(`
+        SELECT 
+          subitem_id as id,
+          name,
+          description,
+          points,
+          order_position as "orderPosition"
+        FROM 
+          peer_assessment.rubric_subitems
+        WHERE 
+          criterion_id = $1
+        ORDER BY 
+          order_position ASC
+      `, [criterion.id]);
+
       return {
         ...criterion,
         orderPosition: criterion.id,
-        levels: levelsResult.rows
+        levels: levelsResult.rows,
+        subitems: subitemsResult.rows
       };
     }));
 
@@ -103,7 +123,7 @@ export async function POST(
     }
 
     // Parse request body
-    const { title, description, maxPoints, levels } = await request.json();
+    const { title, description, maxPoints, criterionType = 'levels', levels, subitems } = await request.json();
     
     // Validate input
     if (!title || !title.trim()) {
@@ -133,67 +153,115 @@ export async function POST(
       );
     }
 
-    // Create the criterion (using 'name' instead of 'title')
+    // Validate criterion type
+    const validCriterionType = criterionType === 'subitems' ? 'subitems' : 'levels';
+
+    // Create the criterion
     const criterionResult = await pool.query(
       `INSERT INTO peer_assessment.rubric_criteria 
-       (rubric_id, name, description, max_points, weight) 
-       VALUES ($1, $2, $3, $4, $5) 
-       RETURNING criterion_id, name, description, max_points, weight, created_at, updated_at`,
+       (rubric_id, name, description, max_points, weight, criterion_type) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       RETURNING criterion_id, name, description, max_points, weight, criterion_type, created_at, updated_at`,
       [
         rubricId, 
         title.trim(), 
         description?.trim() || null, 
         maxPoints,
-        1.0 // Default weight to 1.0
+        1.0, // Default weight to 1.0
+        validCriterionType
       ]
     );
 
     const newCriterion = criterionResult.rows[0];
     const criterionId = newCriterion.criterion_id;
 
-    // Save performance levels if provided
     const savedLevels = [];
-    if (levels && Array.isArray(levels) && levels.length > 0) {
-      for (let i = 0; i < levels.length; i++) {
-        const level = levels[i];
-        const levelResult = await pool.query(
-          `INSERT INTO peer_assessment.rubric_performance_levels 
-           (criterion_id, description, points, order_position) 
-           VALUES ($1, $2, $3, $4) 
-           RETURNING level_id, description, points, order_position`,
-          [criterionId, level.description || '', level.score || 0, i + 1]
+    const savedSubitems = [];
+
+    if (validCriterionType === 'subitems') {
+      // Save subitems
+      if (subitems && Array.isArray(subitems) && subitems.length > 0) {
+        for (let i = 0; i < subitems.length; i++) {
+          const subitem = subitems[i];
+          const subitemResult = await pool.query(
+            `INSERT INTO peer_assessment.rubric_subitems 
+             (criterion_id, name, description, points, order_position) 
+             VALUES ($1, $2, $3, $4, $5) 
+             RETURNING subitem_id, name, description, points, order_position`,
+            [criterionId, subitem.name || `Item ${i + 1}`, subitem.description || '', subitem.points || 0, i + 1]
+          );
+          savedSubitems.push({
+            id: subitemResult.rows[0].subitem_id,
+            name: subitemResult.rows[0].name,
+            description: subitemResult.rows[0].description,
+            points: subitemResult.rows[0].points,
+            orderPosition: subitemResult.rows[0].order_position
+          });
+        }
+      } else {
+        // Create a default subitem
+        const subitemResult = await pool.query(
+          `INSERT INTO peer_assessment.rubric_subitems 
+           (criterion_id, name, description, points, order_position) 
+           VALUES ($1, $2, $3, $4, $5) 
+           RETURNING subitem_id, name, description, points, order_position`,
+          [criterionId, 'Item 1', 'Description of this item', maxPoints, 1]
         );
-        savedLevels.push({
-          id: levelResult.rows[0].level_id,
-          description: levelResult.rows[0].description,
-          score: levelResult.rows[0].points,
-          orderPosition: levelResult.rows[0].order_position
+        savedSubitems.push({
+          id: subitemResult.rows[0].subitem_id,
+          name: subitemResult.rows[0].name,
+          description: subitemResult.rows[0].description,
+          points: subitemResult.rows[0].points,
+          orderPosition: subitemResult.rows[0].order_position
         });
       }
     } else {
-      // Create default levels if none provided
-      const defaultLevels = [
-        { description: 'Does not meet expectations', points: Math.round(maxPoints * 0.25) },
-        { description: 'Partially meets expectations', points: Math.round(maxPoints * 0.5) },
-        { description: 'Meets expectations', points: Math.round(maxPoints * 0.75) },
-        { description: 'Exceeds expectations', points: maxPoints }
-      ];
-      
-      for (let i = 0; i < defaultLevels.length; i++) {
-        const level = defaultLevels[i];
-        const levelResult = await pool.query(
-          `INSERT INTO peer_assessment.rubric_performance_levels 
-           (criterion_id, description, points, order_position) 
-           VALUES ($1, $2, $3, $4) 
-           RETURNING level_id, description, points, order_position`,
-          [criterionId, level.description, level.points, i + 1]
-        );
-        savedLevels.push({
-          id: levelResult.rows[0].level_id,
-          description: levelResult.rows[0].description,
-          score: levelResult.rows[0].points,
-          orderPosition: levelResult.rows[0].order_position
-        });
+      // Save performance levels
+      if (levels && Array.isArray(levels) && levels.length > 0) {
+        for (let i = 0; i < levels.length; i++) {
+          const level = levels[i];
+          const levelName = level.name || `Level ${i + 1}`;
+          const levelResult = await pool.query(
+            `INSERT INTO peer_assessment.rubric_performance_levels 
+             (criterion_id, name, description, points, order_position) 
+             VALUES ($1, $2, $3, $4, $5) 
+             RETURNING level_id, name, description, points, order_position`,
+            [criterionId, levelName, level.description || '', level.score || 0, i + 1]
+          );
+          savedLevels.push({
+            id: levelResult.rows[0].level_id,
+            name: levelResult.rows[0].name,
+            description: levelResult.rows[0].description,
+            score: levelResult.rows[0].points,
+            orderPosition: levelResult.rows[0].order_position
+          });
+        }
+      } else {
+        // Create default levels if none provided
+        const defaultLevels = [
+          { name: 'Beginning', description: 'Does not meet expectations', points: Math.round(maxPoints * 0.25) },
+          { name: 'Developing', description: 'Partially meets expectations', points: Math.round(maxPoints * 0.5) },
+          { name: 'Proficient', description: 'Meets expectations', points: Math.round(maxPoints * 0.75) },
+          { name: 'Exemplary', description: 'Exceeds expectations', points: maxPoints }
+        ];
+        
+        for (let i = 0; i < defaultLevels.length; i++) {
+          const level = defaultLevels[i];
+          const levelResult = await pool.query(
+            `INSERT INTO peer_assessment.rubric_performance_levels 
+             (criterion_id, name, description, points, order_position) 
+             VALUES ($1, $2, $3, $4, $5) 
+             RETURNING level_id, name, description, points, order_position`,
+            [criterionId, level.name, level.description, level.points, i + 1]
+          );
+          savedLevels.push({
+            id: levelResult.rows[0].level_id,
+            name: levelResult.rows[0].name,
+            description: levelResult.rows[0].description,
+            score: levelResult.rows[0].points,
+            orderPosition: levelResult.rows[0].order_position
+          });
+        }
       }
     }
 
@@ -201,14 +269,16 @@ export async function POST(
       message: 'Criterion created successfully',
       criterion: {
         id: newCriterion.criterion_id,
-        title: newCriterion.name, // Map name to title
+        title: newCriterion.name,
         description: newCriterion.description,
         maxPoints: newCriterion.max_points,
         weight: newCriterion.weight,
+        criterionType: newCriterion.criterion_type,
         orderPosition: newCriterion.criterion_id,
         createdAt: newCriterion.created_at,
         updatedAt: newCriterion.updated_at,
-        levels: savedLevels
+        levels: savedLevels,
+        subitems: savedSubitems
       }
     });
   } catch (error) {

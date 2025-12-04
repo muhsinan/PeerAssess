@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import RubricForm from '../../../components/review/RubricForm';
-import AIReviewAnalysis from '../../../components/review/AIReviewAnalysis';
+import PeerReviewAssistantChatbox from '../../../components/review/PeerReviewAssistantChatbox';
 import Layout from '../../../components/layout/Layout';
 import ChatWidget from '../../../components/chat/ChatWidget';
 import ChatButton from '../../../components/chat/ChatButton';
@@ -164,20 +164,83 @@ function ViewReviewFeedback({ review, submission, rubricCriteria, currentUserId 
                     {/* Criteria-specific feedback */}
                     {rubricCriteria.length > 0 ? rubricCriteria.map((criterion) => {
                       const criterionScore = review.scores?.find((s: any) => s.criterionId === criterion.id);
+                      const hasSubitems = criterionScore?.subitemScores && Array.isArray(criterionScore.subitemScores) && criterionScore.subitemScores.length > 0;
+                      
                       return (
-                        <div key={criterion.id} className="px-4 py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:px-6">
-                          <dt className="text-sm font-medium text-black">
-                            <div>{criterion.name}</div>
-                            <div className="mt-1 text-xs text-gray-500">{criterion.description}</div>
-                            <div className="mt-2">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                Score: {criterionScore?.score || 0}/{criterion.maxPoints}
-                              </span>
-                            </div>
-                          </dt>
-                          <dd className="mt-1 text-sm text-black sm:mt-0 sm:col-span-3">
-                            {criterionScore?.feedback || 'No specific feedback provided for this criterion.'}
-                          </dd>
+                        <div key={criterion.id} className="px-4 py-5 sm:px-6">
+                          <div className="sm:grid sm:grid-cols-4 sm:gap-4">
+                            <dt className="text-sm font-medium text-black">
+                              <div className="flex items-center gap-2">
+                                {criterion.name}
+                                {hasSubitems && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700">
+                                    Checklist
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-1 text-xs text-gray-500">{criterion.description}</div>
+                              <div className="mt-2">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                  Score: {criterionScore?.score || 0}/{criterion.maxPoints}
+                                </span>
+                              </div>
+                            </dt>
+                            <dd className="mt-1 text-sm text-black sm:mt-0 sm:col-span-3">
+                              {/* Display subitem scores if available */}
+                              {hasSubitems ? (
+                                <div className="space-y-2">
+                                  {criterionScore.subitemScores.map((subitem: any) => (
+                                    <div key={subitem.subitemId} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                      <div className="flex items-start gap-3">
+                                        <div className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${
+                                          subitem.checked 
+                                            ? 'bg-green-100 text-green-600' 
+                                            : 'bg-gray-200 text-gray-400'
+                                        }`}>
+                                          {subitem.checked ? (
+                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                            </svg>
+                                          ) : (
+                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                            </svg>
+                                          )}
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className={`text-sm font-medium ${subitem.checked ? 'text-gray-900' : 'text-gray-500'}`}>
+                                              {subitem.subitemName}
+                                            </span>
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              subitem.checked 
+                                                ? 'bg-green-100 text-green-700' 
+                                                : 'bg-gray-100 text-gray-500'
+                                            }`}>
+                                              {subitem.checked ? `+${subitem.points}` : '0'} / {subitem.points} pts
+                                            </span>
+                                          </div>
+                                          {subitem.feedback && (
+                                            <p className="text-sm text-gray-600">{subitem.feedback}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {criterionScore?.feedback && (
+                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                      <p className="text-sm text-gray-700">
+                                        <span className="font-medium">Overall: </span>
+                                        {criterionScore.feedback}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                criterionScore?.feedback || 'No specific feedback provided for this criterion.'
+                              )}
+                            </dd>
+                          </div>
                         </div>
                       );
                     }) : (
@@ -242,6 +305,9 @@ export default function ReviewPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'submission' | 'review'>('submission');
   const [submitted, setSubmitted] = useState(false);
+  const [isChatboxVisible, setIsChatboxVisible] = useState(false);
+  const [selectedCriterionForHelp, setSelectedCriterionForHelp] = useState<number | null>(null);
+  const [shouldAutoSend, setShouldAutoSend] = useState(false);
   
   
   // Fetch review data
@@ -266,11 +332,12 @@ export default function ReviewPage() {
         }
         
         const reviewData = await reviewResponse.json();
-        setReview(reviewData.review);
+        // The API returns the review object directly, not wrapped in { review: ... }
+        setReview(reviewData);
         
         // Fetch submission details
         const userRole = localStorage.getItem('userRole');
-        const submissionResponse = await fetch(`/api/submissions/${reviewData.review.submissionId}?userId=${userIdFromStorage}&role=${userRole}`);
+        const submissionResponse = await fetch(`/api/submissions/${reviewData.submissionId}?userId=${userIdFromStorage}&role=${userRole}`);
         if (!submissionResponse.ok) {
           throw new Error('Failed to fetch submission details');
         }
@@ -280,8 +347,8 @@ export default function ReviewPage() {
         
         // Check if reviewer has submitted their own assignment (only for students who are reviewers)
         if (role === 'student' && 
-            reviewData.review.reviewerId.toString() === userIdFromStorage && 
-            reviewData.review.status !== 'completed') {
+            reviewData.reviewerId.toString() === userIdFromStorage && 
+            reviewData.status !== 'completed') {
           
           // Check if the reviewer has submitted their assignment
           const reviewerSubmissionResponse = await fetch(
@@ -313,18 +380,18 @@ export default function ReviewPage() {
           // Instructor viewing any review
           (role === 'instructor') ||
           // Student viewing a completed review (either as reviewer or reviewee)
-          (role === 'student' && reviewData.review.status === 'completed')
+          (role === 'student' && reviewData.status === 'completed')
         ) {
           setViewMode(true);
-        } else if (role === 'student' && reviewData.review.reviewerId.toString() !== userIdFromStorage) {
+        } else if (role === 'student' && reviewData.reviewerId.toString() !== userIdFromStorage) {
           // If a student is trying to view a review they're not authorized to see
           router.push('/dashboard');
           return;
         }
         
         // Update review status to in_progress if it's currently 'assigned' and user is the reviewer
-        if (!viewMode && reviewData.review.status === 'assigned' && 
-            reviewData.review.reviewerId.toString() === userIdFromStorage) {
+        if (!viewMode && reviewData.status === 'assigned' && 
+            reviewData.reviewerId.toString() === userIdFromStorage) {
           const updateResponse = await fetch(`/api/peer-reviews/${reviewId}/status`, {
             method: 'PATCH',
             headers: {
@@ -357,8 +424,8 @@ export default function ReviewPage() {
               setCriteriaScores(initialScores);
               
               // Check if review already has scores
-              if (reviewData.review.scores && reviewData.review.scores.length > 0) {
-                setCriteriaScores(reviewData.review.scores);
+              if (reviewData.scores && reviewData.scores.length > 0) {
+                setCriteriaScores(reviewData.scores);
               }
             }
           } else {
@@ -390,8 +457,8 @@ export default function ReviewPage() {
           setAssignment(null);
         }
         
-        if (reviewData.review.overallFeedback) {
-          setOverallFeedback(reviewData.review.overallFeedback);
+        if (reviewData.overallFeedback) {
+          setOverallFeedback(reviewData.overallFeedback);
         }
         
         setIsLoading(false);
@@ -508,22 +575,10 @@ export default function ReviewPage() {
     }
   };
 
-  const handleAIFeedbackSelect = (criterionId: number, feedbackText: string) => {
-    // Update the feedback for the specific criterion
-    const existingFeedback = criteriaScores.find(cs => cs.criterionId === criterionId)?.feedback || '';
-    
-    handleFeedbackChange(criterionId, 
-      existingFeedback ? 
-      `${existingFeedback}\n\n${feedbackText}` : 
-      feedbackText
-    );
-  };
-
-  const handleAIOverallFeedbackSelect = (feedbackText: string) => {
-    setOverallFeedback(overallFeedback ? 
-      `${overallFeedback}\n\n${feedbackText}` : 
-      feedbackText
-    );
+  const handleAIHelpRequest = (criterionId: number) => {
+    setSelectedCriterionForHelp(criterionId);
+    setShouldAutoSend(true);
+    setIsChatboxVisible(true);
   };
 
   const allCriteriaScored = rubricCriteria.every(criterion => {
@@ -711,28 +766,48 @@ export default function ReviewPage() {
             )}
 
             <div className="mt-4 border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
-                <button
-                  onClick={() => setActiveTab('submission')}
-                  className={`${
-                    activeTab === 'submission'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-black hover:text-black hover:border-gray-300'
-                  } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  Submission
-                </button>
-                <button
-                  onClick={() => setActiveTab('review')}
-                  className={`${
-                    activeTab === 'review'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-black hover:text-black hover:border-gray-300'
-                  } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  Review Form
-                </button>
-              </nav>
+              <div className="flex items-center justify-between">
+                <nav className="-mb-px flex space-x-8">
+                  <button
+                    onClick={() => setActiveTab('submission')}
+                    className={`${
+                      activeTab === 'submission'
+                        ? 'border-indigo-500 text-indigo-600'
+                        : 'border-transparent text-black hover:text-black hover:border-gray-300'
+                    } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
+                  >
+                    Submission
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('review')}
+                    className={`${
+                      activeTab === 'review'
+                        ? 'border-indigo-500 text-indigo-600'
+                        : 'border-transparent text-black hover:text-black hover:border-gray-300'
+                    } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm`}
+                  >
+                    Review Form
+                  </button>
+                </nav>
+                
+                {/* AI Assistant Toggle Button */}
+                {activeTab === 'review' && !viewMode && (
+                  <button
+                    type="button"
+                    onClick={() => setIsChatboxVisible(!isChatboxVisible)}
+                    className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isChatboxVisible
+                        ? 'text-white bg-purple-600 hover:bg-purple-700'
+                        : 'text-purple-700 bg-purple-100 hover:bg-purple-200'
+                    } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                    </svg>
+                    {isChatboxVisible ? 'Close' : 'AI Feedback Assistant'}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="mt-6">
@@ -800,6 +875,7 @@ export default function ReviewPage() {
                       onFeedbackChange={handleFeedbackChange}
                       initialScores={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.score }), {})}
                       initialFeedback={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.feedback }), {})}
+                      onAIHelpRequest={handleAIHelpRequest}
                     />
                     
                     <div className="bg-white p-6 shadow rounded-lg">
@@ -818,24 +894,6 @@ export default function ReviewPage() {
                       </div>
                     </div>
 
-                    {/* AI Review Analysis Component */}
-                    <AIReviewAnalysis
-                      criteria={rubricCriteria}
-                      scores={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.score }), {})}
-                      feedback={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.feedback }), {})}
-                      overallFeedback={overallFeedback}
-                      assignment={{
-                        title: assignment?.title || submission?.assignmentTitle || '',
-                        content: assignment?.description || submission?.content || '',
-                        aiPromptsEnabled: assignment?.aiPromptsEnabled,
-                        aiOverallPrompt: assignment?.aiOverallPrompt,
-                        aiCriteriaPrompt: assignment?.aiCriteriaPrompt
-                      }}
-                      submissionAnalysis={submission?.ai_submission_analysis}
-                      onAIFeedbackSelect={handleAIFeedbackSelect}
-                      onAIOverallFeedbackSelect={handleAIOverallFeedbackSelect}
-                    />
-                    
                     <div className="flex justify-between items-center">
                       <div>
                         {error && (
@@ -907,6 +965,23 @@ export default function ReviewPage() {
         </div>
       </div>
       
+      {/* AI Assistant Chatbox */}
+      {review && submission && userId && (
+        <PeerReviewAssistantChatbox
+          reviewerId={parseInt(userId)}
+          submissionId={submission.id}
+          criteria={rubricCriteria}
+          scores={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.score }), {})}
+          feedback={criteriaScores.reduce((acc, cs) => ({ ...acc, [cs.criterionId]: cs.feedback }), {})}
+          isVisible={isChatboxVisible}
+          onClose={() => {
+            setIsChatboxVisible(false);
+            setShouldAutoSend(false);
+          }}
+          selectedCriterionId={selectedCriterionForHelp}
+          autoSendRequest={shouldAutoSend}
+        />
+      )}
 
     </Layout>
   );

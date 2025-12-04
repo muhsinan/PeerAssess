@@ -45,7 +45,8 @@ export async function GET(
         rc.name,
         rc.description,
         rc.max_points as "maxPoints",
-        rc.weight
+        rc.weight,
+        COALESCE(rc.criterion_type, 'levels') AS "criterionType"
       FROM 
         peer_assessment.rubric_criteria rc
       WHERE 
@@ -54,11 +55,12 @@ export async function GET(
         rc.criterion_id
     `, [rubric.id]);
     
-    // Get performance levels for each criterion
+    // Get performance levels and subitems for each criterion
     const criteria = await Promise.all(criteriaResult.rows.map(async (criterion) => {
       const levelsResult = await pool.query(`
         SELECT 
           level_id as id,
+          name,
           description,
           points as score,
           order_position as "orderPosition"
@@ -70,9 +72,25 @@ export async function GET(
           order_position ASC
       `, [criterion.id]);
 
+      const subitemsResult = await pool.query(`
+        SELECT 
+          subitem_id as id,
+          name,
+          description,
+          points,
+          order_position as "orderPosition"
+        FROM 
+          peer_assessment.rubric_subitems
+        WHERE 
+          criterion_id = $1
+        ORDER BY 
+          order_position ASC
+      `, [criterion.id]);
+
       return {
         ...criterion,
-        levels: levelsResult.rows
+        levels: levelsResult.rows,
+        subitems: subitemsResult.rows
       };
     }));
     

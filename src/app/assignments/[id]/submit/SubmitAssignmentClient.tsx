@@ -4,7 +4,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import Link from 'next/link';
-import { Editor } from '@tinymce/tinymce-react';
+import dynamic from 'next/dynamic';
+
+// Dynamically import TinyMCE Editor with SSR disabled
+const Editor = dynamic(
+  () => import('@tinymce/tinymce-react').then((mod) => mod.Editor),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="border border-gray-300 rounded-md p-4 h-[400px] flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Loading editor...</p>
+        </div>
+      </div>
+    )
+  }
+);
 
 export default function SubmitAssignmentClient({ assignmentId }: { assignmentId: string }) {
   const router = useRouter();
@@ -16,7 +32,6 @@ export default function SubmitAssignmentClient({ assignmentId }: { assignmentId:
   const editorRef = useRef<any>(null);
   
   // Form data
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,11 +134,6 @@ export default function SubmitAssignmentClient({ assignmentId }: { assignmentId:
       return;
     }
     
-    if (!title.trim()) {
-      setSubmitError('Please provide a title for your submission');
-      return;
-    }
-    
     // Get content from TinyMCE editor
     const editorContent = editorRef.current ? editorRef.current.getContent() : '';
     
@@ -143,7 +153,7 @@ export default function SubmitAssignmentClient({ assignmentId }: { assignmentId:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: title.trim(),
+          title: '',
           content: editorContent.trim(),
           studentId: userId,
           status: 'submitted'
@@ -166,14 +176,49 @@ export default function SubmitAssignmentClient({ assignmentId }: { assignmentId:
           formData.append('submissionId', submissionId);
           formData.append('studentId', userId);
           
+          console.log(`[Client] Uploading file: ${file.name} (${file.size} bytes)`);
+          
           const uploadResponse = await fetch(`/api/submissions/${submissionId}/attachments`, {
             method: 'POST',
             body: formData,
           });
           
+          console.log(`[Client] Upload response status: ${uploadResponse.status}`);
+          
           if (!uploadResponse.ok) {
-            const errorData = await uploadResponse.json();
-            throw new Error(errorData.error || `Failed to upload attachment: ${file.name}`);
+            // Try to parse JSON error, but handle HTML responses
+            let errorMessage = `Failed to upload attachment: ${file.name}`;
+            
+            // Clone the response so we can try reading it in different formats
+            const responseClone = uploadResponse.clone();
+            
+            try {
+              const errorData = await uploadResponse.json();
+              errorMessage = errorData.error || errorMessage;
+              if (errorData.details) {
+                console.error('[Client] Upload error details:', errorData.details);
+                errorMessage += ` (${errorData.details})`;
+              }
+            } catch (parseError) {
+              // If we can't parse as JSON, try reading as text from the cloned response
+              try {
+                const errorText = await responseClone.text();
+                console.error('[Client] Non-JSON error response:', errorText.substring(0, 200));
+                
+                // Check for specific nginx errors
+                if (uploadResponse.status === 413 || errorText.includes('413') || errorText.includes('too large')) {
+                  errorMessage = `File "${file.name}" is too large. The server's upload limit needs to be increased. Please contact your administrator.`;
+                } else {
+                  errorMessage += ' (Server returned an error - check server logs)';
+                }
+              } catch (textError) {
+                console.error('[Client] Could not read error response:', textError);
+                if (uploadResponse.status === 413) {
+                  errorMessage = `File "${file.name}" is too large. Maximum upload size exceeded.`;
+                }
+              }
+            }
+            throw new Error(errorMessage);
           }
           
           // Update progress
@@ -337,7 +382,7 @@ export default function SubmitAssignmentClient({ assignmentId }: { assignmentId:
                 Submit Your Work
               </h3>
               <p className="mt-1 max-w-2xl text-sm text-purple-600">
-                Please provide a title, content, and any attachments for your submission.
+                Please provide content and any attachments for your submission.
               </p>
             </div>
             
@@ -364,27 +409,6 @@ export default function SubmitAssignmentClient({ assignmentId }: { assignmentId:
               
               <form onSubmit={handleSubmit}>
                 <div className="space-y-6">
-                  <div>
-                    <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                      Submission Title *
-                    </label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        name="title"
-                        id="title"
-                        required
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        placeholder="e.g., Assignment 1 Submission - [Your Name]"
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Give your submission a clear title so it's easy to identify
-                    </p>
-                  </div>
-                  
                   <div>
                     <label htmlFor="content" className="block text-sm font-medium text-gray-700">
                       Submission Content *

@@ -2,12 +2,16 @@
 
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
+import { useEmailJS } from '@/hooks/useEmailJS';
 
 interface BulkUploadResult {
   email: string;
   status: 'success' | 'error' | 'already_enrolled' | 'already_invited';
   message: string;
   name?: string;
+  invitationToken?: string;
+  courseName?: string;
+  instructorName?: string;
 }
 
 interface BulkUploadSummary {
@@ -24,6 +28,7 @@ interface BulkStudentUploadProps {
 }
 
 export default function BulkStudentUpload({ courseId, onComplete }: BulkStudentUploadProps) {
+  const { sendInvitationEmail } = useEmailJS();
   const [emails, setEmails] = useState<string[]>([]);
   const [rawTextInput, setRawTextInput] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
@@ -129,6 +134,37 @@ export default function BulkStudentUpload({ courseId, onComplete }: BulkStudentU
       }
 
       const result = await response.json();
+      
+      // Send emails for successful invitations using EmailJS
+      if (result.results) {
+        for (const inviteResult of result.results) {
+          if (inviteResult.status === 'success' && inviteResult.invitationToken) {
+            try {
+              const emailData = {
+                to: inviteResult.email,
+                subject: `Invitation to join ${inviteResult.courseName} on Peercept`,
+                instructor_name: inviteResult.instructorName,
+                course_name: inviteResult.courseName,
+                invitation_url: `${window.location.origin}/register?invitation=${inviteResult.invitationToken}`,
+                verification_url: `${window.location.origin}/register?invitation=${inviteResult.invitationToken}`
+              };
+              
+              const emailSent = await sendInvitationEmail(emailData);
+              if (!emailSent) {
+                console.warn(`Failed to send email to ${inviteResult.email}`);
+                // Update the message to indicate email delivery failed
+                inviteResult.message = 'Invitation created, but email delivery failed. Student can still register using the invitation link.';
+              } else {
+                inviteResult.message = 'Invitation sent successfully via email';
+              }
+            } catch (emailError) {
+              console.error(`EmailJS failed for ${inviteResult.email}:`, emailError);
+              inviteResult.message = 'Invitation created, but email delivery failed. Student can still register using the invitation link.';
+            }
+          }
+        }
+      }
+      
       setUploadResults(result);
       setShowResults(true);
       

@@ -310,7 +310,8 @@ export const sendCourseInvitationEmailJS = async (
     // Additional variables for EmailJS template
     instructor_name: instructorName,
     course_name: courseName,
-    invitation_url: invitationUrl
+    invitation_url: invitationUrl,
+    verification_url: invitationUrl // Add this so it works with the general template
   });
 };
 
